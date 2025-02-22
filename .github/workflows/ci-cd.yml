@@ -1,0 +1,38 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Vérifie le code source
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Installation de Node.js (à adapter selon votre version)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      # Installation des dépendances
+      - name: Install dependencies
+        run: npm install
+
+      # Exécution des tests
+      - name: Run tests
+        run: npm test
+
+      # Build de l'application (adapter la commande si nécessaire)
+      - name: Build project
+        run: npm run build
+
+      # Optionnel : déploiement ou autre action post-build
+      #- name: Deploy
+      #  run: npm run deploy
