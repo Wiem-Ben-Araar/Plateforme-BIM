@@ -1,0 +1,155 @@
+.annotation-marker {
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.2s;
+    pointer-events: all;
+  }
+  
+  .annotation-marker:hover {
+    transform: scale(1.1);
+    z-index: 1000;
+  }
+  
+  .annotation-marker.text .marker-icon {
+    background: rgba(255, 255, 255, 0.9);
+    border: 2px solid #3b82f6;
+    border-radius: 4px;
+    padding: 4px;
+  }
+  
+  .annotation-marker.text .marker-icon svg {
+    color: #3b82f6;
+  }
+  
+  /* Cloud marker style */
+  .marker-icon.cloud {
+    background: rgba(59, 130, 246, 0.9);
+    border-radius: 16px;
+    padding: 6px;
+    color: white;
+  }
+  
+  /* Arrow marker style */
+  .marker-icon.arrow {
+    background: rgba(239, 68, 68, 0.9);
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    color: white;
+  }
+  
+  /* Text marker style */
+  .marker-icon.text {
+    background: rgba(16, 185, 129, 0.9);
+    border-radius: 4px;
+    color: white;
+  }
+  
+  .marker-content {
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    margin-left: 12px;
+    width: 240px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+  }
+  
+  .annotation-marker:hover .marker-content {
+    opacity: 1;
+    visibility: visible;
+  }
+  
+  .marker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .marker-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.4;
+  }
+  
+  .marker-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .annotation-text {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: black;
+    background-color: white;
+    padding: 4px;
+    border-radius: 4px;
+    border: 1px solid black;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .sidebar-container {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 0;
+    transition: width 0.3s ease-in-out;
+    z-index: 20;
+    overflow: hidden;
+  }
+  
+  .sidebar-container.active {
+    width: 350px;
+    box-shadow: -4px 0 10px rgba(0, 0, 0, 0.1);
+  }
+  
+  .property-sidebar {
+    width: 350px;
+    height: 100%;
+    overflow-y: auto;
+  }
+  
+  /* Customizations for the property list */
+  .property-item {
+    padding: 6px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .property-item:last-child {
+    border-bottom: none;
+  }
+  
+  .property-label {
+    color: #666;
+    font-weight: 500;
+  }
+  
+  .property-value {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* Animation pour l'apparition */
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  
+  .sidebar-container.active .property-sidebar {
+    animation: slideIn 0.3s ease-out;
+  }
