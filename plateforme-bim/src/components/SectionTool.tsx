@@ -33,47 +33,37 @@
  
    // Désactiver toutes les fonctionnalités automatiques de coupe
    useEffect(() => {
-     if (!viewer) return
- 
-     // Sauvegarder les méthodes originales
-     const originalCreatePlane = viewer.clipper.createPlane
-     const originalPickPlane = viewer.clipper.pickPlane
-     const originalDeleteAllPlanes = viewer.clipper.deleteAllPlanes
- 
-     // Remplacer la méthode createPlane
-     viewer.clipper.createPlane = function (plane?: THREE.Plane) {
-       // Autoriser uniquement les créations explicites par notre code
-       if (isCreatingRef.current && plane) {
-         return originalCreatePlane.call(this, plane)
-       }
-       // Bloquer toutes les autres créations automatiques
-       return null
-     }
- 
-     // Désactiver complètement la méthode pickPlane
-     viewer.clipper.pickPlane = () => {
-       // Cette méthode est responsable de créer des plans lors des clics automatiques
-       // On la désactive complètement
-       return null
-     }
- 
-     // Intercepter deleteAllPlanes pour éviter les suppressions non autorisées
-     viewer.clipper.deleteAllPlanes = function () {
-       // Autoriser uniquement les suppressions explicites par notre code
-       if (isCreatingRef.current) {
-         return originalDeleteAllPlanes.call(this)
-       }
-       // Sinon, ne rien faire pour éviter les suppressions automatiques
-       return null
-     }
- 
-     return () => {
-       // Restaurer les méthodes originales
-       viewer.clipper.createPlane = originalCreatePlane
-       viewer.clipper.pickPlane = originalPickPlane
-       viewer.clipper.deleteAllPlanes = originalDeleteAllPlanes
-     }
-   }, [viewer])
+    if (!viewer || !viewer.clipper) return; // 🔒 Ajout de sécurité ici
+  
+    const originalCreatePlane = viewer.clipper.createPlane
+    const originalPickPlane = viewer.clipper.pickPlane
+    const originalDeleteAllPlanes = viewer.clipper.deleteAllPlanes
+  
+    viewer.clipper.createPlane = function (plane?: THREE.Plane) {
+      if (isCreatingRef.current && plane) {
+        return originalCreatePlane.call(this, plane)
+      }
+      return null
+    }
+  
+    viewer.clipper.pickPlane = () => {
+      return null
+    }
+  
+    viewer.clipper.deleteAllPlanes = function () {
+      if (isCreatingRef.current) {
+        return originalDeleteAllPlanes.call(this)
+      }
+      return null
+    }
+  
+    return () => {
+      viewer.clipper.createPlane = originalCreatePlane
+      viewer.clipper.pickPlane = originalPickPlane
+      viewer.clipper.deleteAllPlanes = originalDeleteAllPlanes
+    }
+  }, [viewer])
+  
  
    // Fonction pour appliquer le plan de coupe de manière sécurisée
    const applyClippingPlane = (plane: THREE.Plane) => {
@@ -227,7 +217,7 @@
        applyClippingPlane(resetPlane)
      }
    }
- 
+
    // Bouton pour créer un nouveau plan
    const handleNewPlane = () => {
      // Permettre la création d'un nouveau plan

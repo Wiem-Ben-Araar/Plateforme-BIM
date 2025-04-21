@@ -1,5 +1,4 @@
-// src/components/MeasurementTool.tsx
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer';
 
@@ -15,7 +14,7 @@ export interface Measurement {
 }
 
 interface MeasurementToolProps {
-  viewer: any; // Référence au viewer IFC.js
+  viewer: any;
   containerRef: React.RefObject<HTMLDivElement>;
   active: boolean;
   measurementMode: MeasurementMode;
@@ -35,10 +34,11 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const previewLineRef = useRef<THREE.Line | null>(null);
   const snapMarkerRef = useRef<THREE.Mesh | null>(null);
-  const snapDistanceThreshold = 0.5; // Distance en mètres pour le snap
+  const snapDistanceThreshold = 0.5;
   const originalClickHandlerRef = useRef<((event: MouseEvent) => void) | null>(null);
+  const originalOnClick = useRef<any>(null);
+  const lastHoverPointRef = useRef<THREE.Vector3 | null>(null);
   
-  // Créer un label pour les mesures
   const createLabel = (text: string, position: THREE.Vector3) => {
     const labelDiv = document.createElement('div');
     labelDiv.className = 'measurement-label';
@@ -50,37 +50,86 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     return labelObj;
   };
 
-  // Créer un marqueur visuel pour le snap
   const createSnapMarker = (position: THREE.Vector3) => {
     if (snapMarkerRef.current) {
       viewer.context.getScene().remove(snapMarkerRef.current);
     }
     
-    const geometry = new THREE.SphereGeometry(0.05, 16, 16);
-    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-    const sphere = new THREE.Mesh(geometry, material);
-    sphere.position.copy(position);
-    viewer.context.getScene().add(sphere);
-    snapMarkerRef.current = sphere;
+    const group = new THREE.Group();
     
-    return sphere;
+    // Cercle
+    const circleGeometry = new THREE.CircleGeometry(0.07, 32);
+    const circleMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xffff00,
+      side: THREE.DoubleSide
+    });
+    const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+    circle.rotation.x = Math.PI / 2;
+    group.add(circle);
+    
+    // Croix
+    const crossMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+    const crossGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.1, 0.01, 0),
+      new THREE.Vector3(0.1, 0.01, 0),
+      new THREE.Vector3(0, 0.01, -0.1),
+      new THREE.Vector3(0, 0.01, 0.1)
+    ]);
+    const cross = new THREE.LineSegments(crossGeometry, crossMaterial);
+    group.add(cross);
+    
+    group.position.copy(position);
+    viewer.context.getScene().add(group);
+    snapMarkerRef.current = group;
+    
+    return group;
   };
 
-  // Trouver le point le plus proche pour le snap
   const findSnapPoint = (point: THREE.Vector3): THREE.Vector3 | null => {
-    // 1. Vérifier le snap aux points existants des mesures
+    if (!viewer) return null;
+    
+    const snapThreshold = snapDistanceThreshold;
+    let closestPoint: THREE.Vector3 | null = null;
+    let minDistance = Infinity;
+  
+    // 1. Snap aux points existants des mesures
     for (const measurement of measurements) {
       for (const existingPoint of measurement.points) {
-        if (existingPoint.distanceTo(point) < snapDistanceThreshold) {
-          return existingPoint.clone();
+        const distance = existingPoint.distanceTo(point);
+        if (distance < snapThreshold && distance < minDistance) {
+          minDistance = distance;
+          closestPoint = existingPoint.clone();
         }
       }
     }
+  
+    // 2. Snap aux sommets des éléments IFC
+    const ifcMeshes = viewer.IFC.loader.ifcManager.state.models
+      .filter((model: any) => model.mesh)
+      .map((model: any) => model.mesh);
+  
+    const sphere = new THREE.Sphere(point.clone(), snapThreshold);
     
-    return null; // Retourne null si aucun snap n'est trouvé
+    for (const mesh of ifcMeshes) {
+      if (!mesh.geometry) continue;
+      
+      const geometry = mesh.geometry.clone();
+      geometry.applyMatrix4(mesh.matrixWorld);
+      
+      const positionAttribute = geometry.getAttribute('position');
+      for (let i = 0; i < positionAttribute.count; i++) {
+        const vertex = new THREE.Vector3().fromBufferAttribute(positionAttribute, i);
+        const distance = vertex.distanceTo(point);
+        if (distance < snapThreshold && distance < minDistance) {
+          minDistance = distance;
+          closestPoint = vertex.clone();
+        }
+      }
+    }
+  
+    return closestPoint;
   };
 
-  // Obtenir le point d'intersection avec le modèle via raycasting
   const getIntersectionPoint = (event: MouseEvent): THREE.Vector3 | null => {
     const container = containerRef.current;
     if (!container || !viewer) return null;
@@ -94,7 +143,6 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, viewer.context.getCamera());
 
-    // Collect all visible IFC meshes
     const ifcMeshes: THREE.Mesh[] = [];
     
     if (viewer.IFC?.loader?.ifcManager?.state?.models) {
@@ -112,7 +160,6 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
       }
     }
     
-    // Fallback: intersection avec un plan horizontal (y = 0)
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const intersectionPoint = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(groundPlane, intersectionPoint)) {
@@ -122,41 +169,22 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     return null;
   };
 
-  // Gestionnaire de clic pour les mesures
   const handleMeasureClick = (event: MouseEvent) => {
     if (!active || measurementMode === 'none' || !viewer) return;
     
-    event.preventDefault(); // Empêcher le comportement par défaut
-    event.stopPropagation(); // Empêcher la propagation aux autres gestionnaires
+    event.preventDefault();
+    event.stopPropagation();
     
-    let point = getIntersectionPoint(event);
+    const point = lastHoverPointRef.current;
     if (!point) return;
-    
-    // Vérifier s'il y a un point de snap à proximité
-    const snapPoint = findSnapPoint(point);
-    if (snapPoint) {
-      point = snapPoint;
-    }
 
-    // Mettre à jour les points de la mesure actuelle
     setCurrentPoints(prev => {
-      const newPoints = [...prev, point];
+      const newPoints = [...prev, point.clone()];
       
-      // Mode "distance" : 2 clics
-      if (measurementMode === 'distance' && newPoints.length === 2) {
-        finalizeMeasurement(newPoints, 'distance');
-        return [];
-      }
-
-      // Mode "angle" : 3 clics
-      if (measurementMode === 'angle' && newPoints.length === 3) {
-        finalizeMeasurement(newPoints, 'angle');
-        return [];
-      }
-
-      // Mode "perpendicular" : 3 clics
-      if (measurementMode === 'perpendicular' && newPoints.length === 3) {
-        finalizeMeasurement(newPoints, 'perpendicular');
+      if ((measurementMode === 'distance' && newPoints.length === 2) ||
+          (measurementMode === 'angle' && newPoints.length === 3) ||
+          (measurementMode === 'perpendicular' && newPoints.length === 3)) {
+        setTimeout(() => finalizeMeasurement(newPoints, measurementMode), 0);
         return [];
       }
       
@@ -164,26 +192,26 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     });
   };
 
-  // Finaliser une mesure (séparé pour éviter les setState durant le rendu)
   const finalizeMeasurement = (points: THREE.Vector3[], mode: MeasurementMode) => {
     if (!viewer) return;
     
     let distance, angle;
     let line: THREE.Line | undefined;
     const labels: CSS2DObject[] = [];
+    const scene = viewer.context.getScene();
     
-    if (mode === 'distance') {
+    if (mode === 'distance' && points.length === 2) {
       distance = points[0].distanceTo(points[1]);
       const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
       const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
       line = new THREE.Line(lineGeometry, lineMaterial);
       const midPoint = new THREE.Vector3().addVectors(points[0], points[1]).multiplyScalar(0.5);
       const label = createLabel(`${distance.toFixed(2)} m`, midPoint);
-      viewer.context.getScene().add(line);
-      viewer.context.getScene().add(label);
+      scene.add(line);
+      scene.add(label);
       labels.push(label);
     } 
-    else if (mode === 'angle') {
+    else if (mode === 'angle' && points.length === 3) {
       const v1 = new THREE.Vector3().subVectors(points[0], points[1]);
       const v2 = new THREE.Vector3().subVectors(points[2], points[1]);
       angle = v1.angleTo(v2);
@@ -199,24 +227,24 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
       );
       
       const label = createLabel(`${angleDeg.toFixed(2)}°`, points[1]);
-      viewer.context.getScene().add(line1);
-      viewer.context.getScene().add(line2);
-      viewer.context.getScene().add(label);
+      scene.add(line1);
+      scene.add(line2);
+      scene.add(label);
       labels.push(label);
-      line = line1; // Gardons une référence au moins à une ligne
+      line = line1;
     } 
-    else if (mode === 'perpendicular') {
+    else if (mode === 'perpendicular' && points.length === 3) {
       const line3D = new THREE.Line3(points[0], points[1]);
       const closestPoint = new THREE.Vector3();
       line3D.closestPointToPoint(points[2], true, closestPoint);
       distance = points[2].distanceTo(closestPoint);
       
-      // Créer une ligne pour montrer la distance de base
+      // Ligne de base
       const baseLineGeometry = new THREE.BufferGeometry().setFromPoints([points[0], points[1]]);
       const baseLineMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
       const baseLine = new THREE.Line(baseLineGeometry, baseLineMaterial);
       
-      // Créer la ligne perpendiculaire
+      // Ligne perpendiculaire
       const perpLineGeometry = new THREE.BufferGeometry().setFromPoints([points[2], closestPoint]);
       const perpLineMaterial = new THREE.LineDashedMaterial({ 
         color: 0x00ffff, 
@@ -229,9 +257,9 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
       }
       
       const label = createLabel(`${distance.toFixed(2)} m`, new THREE.Vector3().addVectors(points[2], closestPoint).multiplyScalar(0.5));
-      viewer.context.getScene().add(baseLine);
-      viewer.context.getScene().add(line);
-      viewer.context.getScene().add(label);
+      scene.add(baseLine);
+      scene.add(line);
+      scene.add(label);
       labels.push(label);
     }
     
@@ -251,40 +279,71 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     }
   };
 
-  // Effet pour gérer les changements de mode/activité
-  useEffect(() => {
-    // Quand le composant est activé, sauvegarder le gestionnaire de clic original
-    if (active && measurementMode !== 'none' && containerRef.current) {
-      // Sauvegarder le gestionnaire de clic existant
-      originalClickHandlerRef.current = containerRef.current.onclick as ((event: MouseEvent) => void) | null;
-      
-      // Remplacer par notre gestionnaire de mesure
-      containerRef.current.onclick = handleMeasureClick as any;
-      
-      // Réinitialiser les points de mesure en cours
-      setCurrentPoints([]);
-    } else if (!active && containerRef.current && originalClickHandlerRef.current) {
-      // Restaurer le gestionnaire de clic original quand on désactive l'outil
-      containerRef.current.onclick = originalClickHandlerRef.current;
-      originalClickHandlerRef.current = null;
+  const disableSelection = useCallback(() => {
+    if (containerRef.current) {
+      originalOnClick.current = containerRef.current.onclick;
+      containerRef.current.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      };
     }
+  }, [containerRef]);
+
+  const enableSelection = useCallback(() => {
+    if (containerRef.current && originalOnClick.current) {
+      containerRef.current.onclick = originalOnClick.current;
+    }
+  }, [containerRef]);
+
+  const clearAllMeasurements = useCallback(() => {
+    if (viewer) {
+      const scene = viewer.context.getScene();
+      measurements.forEach(m => {
+        if (m.line) scene.remove(m.line);
+        m.labels.forEach(label => scene.remove(label));
+      });
+      setMeasurements([]);
+      setCurrentPoints([]);
+      if (previewLineRef.current) {
+        scene.remove(previewLineRef.current);
+        previewLineRef.current = null;
+      }
+      if (onClearMeasurements) {
+        onClearMeasurements();
+      }
+    }
+  }, [viewer, measurements, onClearMeasurements]);
+
+  useEffect(() => {
+    if (!containerRef.current || !viewer) return;
     
-    // Nettoyer les indicateurs visuels temporaires
-    return () => {
-      if (viewer && previewLineRef.current) {
+    if (active) {
+      disableSelection();
+      containerRef.current.addEventListener('click', handleMeasureClick, { capture: true });
+    } else {
+      enableSelection();
+      containerRef.current.removeEventListener('click', handleMeasureClick, { capture: true });
+      
+      // Clean up preview line and snap marker when tool is deactivated
+      if (previewLineRef.current) {
         viewer.context.getScene().remove(previewLineRef.current);
         previewLineRef.current = null;
       }
-      if (viewer && snapMarkerRef.current) {
+      if (snapMarkerRef.current) {
         viewer.context.getScene().remove(snapMarkerRef.current);
         snapMarkerRef.current = null;
       }
+    }
+    
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.removeEventListener('click', handleMeasureClick, { capture: true });
+      }
     };
-  }, [active, measurementMode]);
+  }, [active, viewer, measurementMode, disableSelection, enableSelection]);
 
-  // Effet pour la prévisualisation lors du déplacement de la souris
   useEffect(() => {
-    if (!viewer || measurementMode === 'none' || currentPoints.length === 0 || !active || !containerRef.current) {
+    if (!viewer || measurementMode === 'none' || !active || !containerRef.current) {
       return;
     }
 
@@ -302,25 +361,29 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
         snapMarkerRef.current = null;
       }
 
-      // Mise à jour de la ligne de prévisualisation
-      if (!previewLineRef.current) {
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints([currentPoints[0], point]);
-        const lineMaterial = new THREE.LineDashedMaterial({ 
-          color: 0x00ff00, 
-          dashSize: 0.1, 
-          gapSize: 0.05 
-        });
-        previewLineRef.current = new THREE.Line(lineGeometry, lineMaterial);
-        if (previewLineRef.current.computeLineDistances) {
-          previewLineRef.current.computeLineDistances();
-        }
-        viewer.context.getScene().add(previewLineRef.current);
-      } else {
-        const pointsArray = [currentPoints[0], point];
-        previewLineRef.current.geometry.setFromPoints(pointsArray);
-        previewLineRef.current.geometry.attributes.position.needsUpdate = true;
-        if (previewLineRef.current.computeLineDistances) {
-          previewLineRef.current.computeLineDistances();
+      lastHoverPointRef.current = point;
+
+      // Mise à jour de la ligne de prévisualisation si nous avons des points actuels
+      if (currentPoints.length > 0) {
+        if (!previewLineRef.current) {
+          const lineGeometry = new THREE.BufferGeometry().setFromPoints([currentPoints[0], point]);
+          const lineMaterial = new THREE.LineDashedMaterial({ 
+            color: 0x00ff00, 
+            dashSize: 0.1, 
+            gapSize: 0.05 
+          });
+          previewLineRef.current = new THREE.Line(lineGeometry, lineMaterial);
+          if (previewLineRef.current.computeLineDistances) {
+            previewLineRef.current.computeLineDistances();
+          }
+          viewer.context.getScene().add(previewLineRef.current);
+        } else {
+          const pointsArray = [currentPoints[0], point];
+          previewLineRef.current.geometry.setFromPoints(pointsArray);
+          previewLineRef.current.geometry.attributes.position.needsUpdate = true;
+          if (previewLineRef.current.computeLineDistances) {
+            previewLineRef.current.computeLineDistances();
+          }
         }
       }
     };
@@ -331,52 +394,31 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
       if (containerRef.current) {
         containerRef.current.removeEventListener('mousemove', onMouseMove);
       }
-      if (viewer && previewLineRef.current) {
-        viewer.context.getScene().remove(previewLineRef.current);
-        previewLineRef.current = null;
-      }
-      if (viewer && snapMarkerRef.current) {
-        viewer.context.getScene().remove(snapMarkerRef.current);
-        snapMarkerRef.current = null;
+      if (viewer) {
+        if (previewLineRef.current) {
+          viewer.context.getScene().remove(previewLineRef.current);
+          previewLineRef.current = null;
+        }
+        if (snapMarkerRef.current) {
+          viewer.context.getScene().remove(snapMarkerRef.current);
+          snapMarkerRef.current = null;
+        }
       }
     };
-  }, [measurementMode, currentPoints, active]);
+  }, [measurementMode, currentPoints, active, viewer]);
 
-  // Fonction pour supprimer toutes les mesures
-  const clearAllMeasurements = () => {
-    if (viewer) {
-      const scene = viewer.context.getScene();
-      measurements.forEach(m => {
-        if (m.line) scene.remove(m.line);
-        m.labels.forEach(label => scene.remove(label));
-      });
-      setMeasurements([]);
-      setCurrentPoints([]);
-      if (onClearMeasurements) {
-        onClearMeasurements();
-      }
-    }
-  };
-
-  // Effet pour nettoyer lorsque le composant est démonté
   useEffect(() => {
     return () => {
-      // Restaurer le gestionnaire de clic original si nécessaire
-      if (containerRef.current && originalClickHandlerRef.current) {
-        containerRef.current.onclick = originalClickHandlerRef.current;
+      enableSelection();
+      if (viewer) {
+        const scene = viewer.context.getScene();
+        measurements.forEach(m => {
+          if (m.line) scene.remove(m.line);
+          m.labels.forEach(label => scene.remove(label));
+        });
       }
-      // Nettoyer les mesures si nécessaire
-      clearAllMeasurements();
     };
-  }, []);
+  }, [viewer, measurements, enableSelection]);
 
-  // Effet pour appeler clearAllMeasurements lorsque l'outil est désactivé
-  useEffect(() => {
-    if (!active && measurements.length > 0) {
-      // Nous ne nettoyons pas automatiquement - cela serait fait par le parent via onClearMeasurements
-    }
-  }, [active]);
-
-  // Ce composant n'a pas de rendu propre
   return null;
 };

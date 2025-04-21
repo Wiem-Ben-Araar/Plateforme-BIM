@@ -5,7 +5,7 @@ import { IfcViewerAPI } from "web-ifc-viewer";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import { User2, Trash2, ClipboardList, Plus, Calendar, X, ArrowLeft, AlertTriangle, Loader2, Box } from 'lucide-react';
+import { User2, Trash2, ClipboardList, Plus, Calendar, X, ArrowLeft, AlertTriangle, Loader2, Box, Home } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import PropertySidebar from "@/components/PropertySidebar";
@@ -35,6 +35,7 @@ import { useRouter } from "next/navigation";
 import ViewCubeComponent from "@/components/ViewCubeComponent";
 import CameraControls from 'camera-controls';
 import SectionTool from "@/components/SectionTool";
+import { MeasurementTool } from "@/components/MeasurementTool";
 
 
 
@@ -42,18 +43,18 @@ import SectionTool from "@/components/SectionTool";
 
 
 
-type Tool = 'select' | 'section' | 'measure' | 'hide' | 'isolate' | 'comment';
+
 type ViewStyle = 'shaded' | 'wireframe' | 'hidden-line';
 type ViewDirection = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso';
-type MeasurementMode = 'none' | 'distance' | 'perpendicular' | 'angle';
-type AnnotationType = 'cloud' | 'arrow' | 'text';
 type Comment = (CloudAnnotation | ArrowAnnotation | TextAnnotation) & { id: string; author: string };
+type MeasurementMode = 'none' | 'distance' | 'perpendicular' | 'angle';
 interface Measurement {
   id: string;
+  type: MeasurementMode; // Ajoutez ce champ
+  lines: THREE.Line[];  // Au lieu d'un seul line
   points: THREE.Vector3[];
   distance?: number;
   angle?: number;
-  line?: THREE.Line;
   labels: CSS2DObject[];
 }
 interface BaseAnnotation {
@@ -249,8 +250,10 @@ export default function ViewerPage() {
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>('none');
-  const [currentPoints, setCurrentPoints] = useState<THREE.Vector3[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
+
+  const [currentPoints, setCurrentPoints] = useState<THREE.Vector3[]>([]);
+ 
   const target = new THREE.Vector3();
   const [currentPlane, setCurrentPlane] = useState<PlaneData | null>(null);
   const [isIsolationActive, setIsIsolationActive] = useState(false);
@@ -727,7 +730,12 @@ const ClashTypeSelector = ({ onStartClashDetection }) => {
   useEffect(() => {
     analyzeAvailableTypes();
   }, [loadedModels]);
-  
+  const handleMeasurementComplete = (measurement: Measurement) => {
+    setMeasurements(prev => [...prev, measurement]);
+  };
+
+
+
   return (
     <div className="p-4 bg-white">
       <h3 className="text-lg font-semibold mb-3">Détection de clash</h3>
@@ -1238,17 +1246,6 @@ const ClashDetectionPanel = ({ clashes, onClashSelect }) => {
   );
 };
 
-  // --- Création d'un label pour les mesures ---
-  const createLabel = (text: string, position: THREE.Vector3) => {
-    const labelDiv = document.createElement('div');
-    labelDiv.className = 'measurement-label';
-    labelDiv.textContent = text;
-    labelDiv.style.color = 'red';
-    labelDiv.style.fontSize = '14px';
-    const labelObj = new CSS2DObject(labelDiv);
-    labelObj.position.copy(position);
-    return labelObj;
-  };
 
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
@@ -2014,6 +2011,14 @@ renderer.sortObjects = true;
               setSelectedElement(null);
               setSelectedModelID(null);
               setIsSidebarOpen(false);
+              
+              // Réinitialiser le centre de rotation au centre de la scène
+              const scene = viewer.context.getScene();
+              const sceneCenter = new THREE.Vector3();
+              new THREE.Box3().setFromObject(scene).getCenter(sceneCenter);
+              viewer.context.ifcCamera.cameraControls.setTarget(
+                sceneCenter.x, sceneCenter.y, sceneCenter.z, true
+              );
             } else {
               const modelID = result.modelID;
               const id = result.id;
@@ -2023,19 +2028,27 @@ renderer.sortObjects = true;
               setIsSidebarOpen(true);
         
               // Trouver le mesh de l'élément sélectionné
-              const subset = viewer.IFC.selector.highlighted; // ou viewer.IFC.selector.selection if you use select
+              const subset = viewer.IFC.selector.highlighted;
               if (subset && subset.geometry) {
                 const bbox = new THREE.Box3().setFromObject(subset);
                 const center = bbox.getCenter(new THREE.Vector3());
         
-                // Centrer la caméra autour de l'objet sélectionné
-                viewer.context.ifcCamera.cameraControls.setLookAt(
-                  viewer.context.ifcCamera.camera.position.x,
-                  viewer.context.ifcCamera.camera.position.y,
-                  viewer.context.ifcCamera.camera.position.z,
-                  center.x,
-                  center.y,
-                  center.z,
+                // Important: Définir ce point comme nouveau centre de rotation/pivot
+                viewer.context.ifcCamera.cameraControls.setTarget(
+                  center.x, center.y, center.z, true
+                );
+                
+                // En option: ajuster la position de la caméra tout en gardant le même pivot
+                const distance = viewer.context.ifcCamera.cameraControls.getDistance();
+                const direction = new THREE.Vector3().subVectors(
+                  viewer.context.ifcCamera.camera.position, 
+                  center
+                ).normalize();
+                
+                viewer.context.ifcCamera.cameraControls.setPosition(
+                  center.x + direction.x * distance,
+                  center.y + direction.y * distance,
+                  center.z + direction.z * distance,
                   true
                 );
               }
@@ -2089,7 +2102,32 @@ renderer.sortObjects = true;
           }
   
           setLoadedModels(newModels);
-          viewer.context.ifcCamera?.cameraControls?.update(true);
+          // CENTRAGE ISO automatique
+if (newModels.length > 0) {
+  const scene = viewer.context.getScene();
+  const bbox = new THREE.Box3().setFromObject(scene);
+  const center = bbox.getCenter(new THREE.Vector3());
+  const size = bbox.getSize(new THREE.Vector3());
+
+  const distance = Math.max(size.x, size.y, size.z) * 1.5;
+  const position = new THREE.Vector3(
+    center.x + distance,
+    center.y + distance,
+    center.z + distance
+  );
+
+  viewer.context.ifcCamera.cameraControls.setTarget(
+    center.x, center.y, center.z, false
+  );
+
+  viewer.context.ifcCamera.cameraControls.setLookAt(
+    position.x, position.y, position.z,
+    center.x, center.y, center.z,
+    true
+  );
+}
+
+viewer.context.ifcCamera?.cameraControls?.update(true);
         }
   
       } catch (error) {
@@ -2208,22 +2246,20 @@ renderer.sortObjects = true;
   );
 
 
-  const calculateCameraDistance = (bbox: THREE.Box3) => {
+  const calculateCameraDistance = (bbox: THREE.Box3) => { 
     const size = bbox.getSize(new THREE.Vector3());
-    return Math.max(size.x, size.y, size.z) * 1.5;
+    return Math.max(size.x, size.y, size.z) * 2.5;
   };
-  // --- Fonctions de vue et zoom ---
+  
   const setView = (direction: ViewDirection) => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-
-    // Désactiver les plans de coupe
+  
     viewer.clipper.deleteAllPlanes();
-
+  
     const controls = viewer.context.ifcCamera.cameraControls;
     const scene = viewer.context.getScene();
-
-    // Trouver le bounding box global de tous les modèles
+  
     const bbox = new THREE.Box3();
     viewer.IFC.loader.ifcManager.state.models.forEach((model: any) => {
       if (model.mesh) {
@@ -2232,15 +2268,17 @@ renderer.sortObjects = true;
         bbox.union(modelBBox);
       }
     });
-
-    // Si aucun modèle chargé, utiliser une distance par défaut
+  
     const distance = bbox.isEmpty() ? 50 : calculateCameraDistance(bbox);
     const center = bbox.isEmpty() ? new THREE.Vector3() : bbox.getCenter(new THREE.Vector3());
-
-    // Configurer l'orientation de la caméra
+  
+    // ✅ Décalage vertical du centre
+    const size = bbox.getSize(new THREE.Vector3());
+    center.z = bbox.min.z + size.z / 2; // centre vertical (au milieu de la hauteur)
+  
     let position = new THREE.Vector3();
     let up = new THREE.Vector3(0, 0, 1);
-
+  
     switch (direction) {
       case 'top':
         position.set(center.x, center.y + distance, center.z);
@@ -2271,8 +2309,7 @@ renderer.sortObjects = true;
         up.set(0, 1, 0);
         break;
     }
-
-    // Animer le mouvement de la caméra
+  
     controls.setLookAt(
       position.x,
       position.y,
@@ -2282,121 +2319,15 @@ renderer.sortObjects = true;
       center.z,
       true
     );
-
-    // Forcer la mise à jour du rendu
+  
     controls.update(true);
     viewer.context.getRenderer().render(scene, viewer.context.getCamera());
   };
+  
 
 
 
 
-  // --- Outil Mesure : clic pour sélectionner des points et mesurer ---
-    useEffect(() => {
-      if (!viewerRef.current || measurementMode === 'none') return;
-      const container = containerRef.current;
-      if (!container) return;
-      const viewer = viewerRef.current;
-
-      const getIntersectionPoint = (event: MouseEvent): THREE.Vector3 | null => {
-        const rect = container.getBoundingClientRect();
-        const mouse = new THREE.Vector2(
-          ((event.clientX - rect.left) / rect.width) * 2 - 1,
-          -((event.clientY - rect.top) / rect.height) * 2 + 1
-        );
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, viewer.context.getCamera());
-
-        const ifcMeshes = Object.values(viewer.IFC.loader.ifcManager.state.models)
-          .filter((model: any) => model.mesh)
-          .map(model => model.mesh);
-        const intersects = raycaster.intersectObjects(ifcMeshes, true);
-
-        if (intersects.length > 0) {
-          return intersects[0].point.clone();
-        }
-        // Fallback : intersection avec un plan horizontal (y = 0)
-        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-        const intersectionPoint = new THREE.Vector3();
-        raycaster.ray.intersectPlane(groundPlane, intersectionPoint);
-        return intersectionPoint;
-      };
-
-      const handleMeasureClick = (event: MouseEvent) => {
-        const point = getIntersectionPoint(event);
-        if (!point) return;
-
-        setCurrentPoints((prev) => {
-          const newPoints = [...prev, point];
-
-          // Mode "distance" : 2 clics
-          if (measurementMode === 'distance' && newPoints.length === 2) {
-            const distance = newPoints[0].distanceTo(newPoints[1]);
-            const lineGeometry = new THREE.BufferGeometry().setFromPoints(newPoints);
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-            const line = new THREE.Line(lineGeometry, lineMaterial);
-            const midPoint = new THREE.Vector3().addVectors(newPoints[0], newPoints[1]).multiplyScalar(0.5);
-            const label = createLabel(`${distance.toFixed(2)} m`, midPoint);
-            viewer.context.getScene().add(line);
-            viewer.context.getScene().add(label);
-            setMeasurements(prevMeas => [
-              ...prevMeas,
-              { id: Math.random().toString(), points: newPoints, distance, line, labels: [label] }
-            ]);
-            return [];
-          }
-
-          // Mode "angle" : 3 clics (le 2ème étant le vertex)
-          if (measurementMode === 'angle' && newPoints.length === 3) {
-            const v1 = new THREE.Vector3().subVectors(newPoints[0], newPoints[1]);
-            const v2 = new THREE.Vector3().subVectors(newPoints[2], newPoints[1]);
-            const angle = v1.angleTo(v2);
-            const angleDeg = THREE.MathUtils.radToDeg(angle);
-            const line1 = new THREE.Line(
-              new THREE.BufferGeometry().setFromPoints([newPoints[1], newPoints[0]]),
-              new THREE.LineBasicMaterial({ color: 0x0000ff })
-            );
-            const line2 = new THREE.Line(
-              new THREE.BufferGeometry().setFromPoints([newPoints[1], newPoints[2]]),
-              new THREE.LineBasicMaterial({ color: 0x0000ff })
-            );
-            const label = createLabel(`${angleDeg.toFixed(2)}°`, newPoints[1]);
-            viewer.context.getScene().add(line1);
-            viewer.context.getScene().add(line2);
-            viewer.context.getScene().add(label);
-            setMeasurements(prevMeas => [
-              ...prevMeas,
-              { id: Math.random().toString(), points: newPoints, angle: angleDeg, labels: [label], line: line1 }
-            ]);
-            return [];
-          }
-
-          // Mode "perpendicular" : 3 clics (les 2 premiers définissent la ligne, le 3ème le point à projeter)
-          if (measurementMode === 'perpendicular' && newPoints.length === 3) {
-            const line3D = new THREE.Line3(newPoints[0], newPoints[1]);
-            const closestPoint = new THREE.Vector3();
-            line3D.closestPointToPoint(newPoints[2], true, closestPoint);
-            const distance = newPoints[2].distanceTo(closestPoint);
-            const perpLineGeometry = new THREE.BufferGeometry().setFromPoints([newPoints[2], closestPoint]);
-            const perpLineMaterial = new THREE.LineDashedMaterial({ color: 0x00ffff, dashSize: 0.5, gapSize: 0.2 });
-            const perpLine = new THREE.Line(perpLineGeometry, perpLineMaterial);
-            perpLine.computeLineDistances();
-            const label = createLabel(`${distance.toFixed(2)} m`, closestPoint);
-            viewer.context.getScene().add(perpLine);
-            viewer.context.getScene().add(label);
-            setMeasurements(prevMeas => [
-              ...prevMeas,
-              { id: Math.random().toString(), points: newPoints, distance, labels: [label], line: perpLine }
-            ]);
-            return [];
-          }
-          return newPoints;
-        });
-      };
-
-      container.addEventListener('click', handleMeasureClick);
-      return () => container.removeEventListener('click', handleMeasureClick);
-    }, [measurementMode, currentPoints]);
     useEffect(() => {
       // Si l'outil n'est plus 'measure', réinitialiser les points et le mode
       if (activeTool !== 'measure') {
@@ -2411,44 +2342,7 @@ renderer.sortObjects = true;
       }
     }, [activeTool]);
     
-  // --- Prévisualisation dynamique lors du déplacement de la souris ---
-  useEffect(() => {
-    if (!viewerRef.current || measurementMode === 'none' || currentPoints.length === 0) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const viewer = viewerRef.current;
-    let previewLine: THREE.Line | null = null;
-
-    const onMouseMove = (event: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
-        ((event.clientX - rect.left) / rect.width) * 2 - 1,
-        -((event.clientY - rect.top) / rect.height) * 2 + 1
-      );
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, viewer.context.getCamera());
-      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      const intersectPoint = new THREE.Vector3();
-      raycaster.ray.intersectPlane(groundPlane, intersectPoint);
-      if (!intersectPoint) return;
-      if (!previewLine) {
-        const lineGeometry = new THREE.BufferGeometry().setFromPoints([currentPoints[0], intersectPoint]);
-        const lineMaterial = new THREE.LineDashedMaterial({ color: 0x00ff00, dashSize: 0.5, gapSize: 0.2 });
-        previewLine = new THREE.Line(lineGeometry, lineMaterial);
-        previewLine.computeLineDistances();
-        viewer.context.getScene().add(previewLine);
-      } else {
-        previewLine.geometry.setFromPoints([currentPoints[0], intersectPoint]);
-        previewLine.geometry.attributes.position.needsUpdate = true;
-      }
-    };
-
-    container.addEventListener('mousemove', onMouseMove);
-    return () => {
-      container.removeEventListener('mousemove', onMouseMove);
-      if (previewLine) viewer.context.getScene().remove(previewLine);
-    };
-  }, [measurementMode, currentPoints]);
+ 
   const handleAnnotationClick = (event: MouseEvent) => {
     if (!viewerRef.current || activeTool !== 'comment') return;
 
@@ -2861,7 +2755,41 @@ renderer.sortObjects = true;
     return new THREE.Mesh(geometry, material);
   };
 
+// Gestionnaire pour les mesures complétées
+const handleMeasurementComplete = (measurement: Measurement) => {
+  setMeasurements(prev => [...prev, measurement]);
+};
 
+// Gestionnaire pour effacer toutes les mesures
+const handleClearMeasurements = () => {
+  if (!viewerRef.current) return;
+
+  const scene = viewerRef.current.context.getScene();
+  const renderer = viewerRef.current.context.getRenderer("css2d");
+
+  // Nettoyage en une seule passe
+  const toRemove = [];
+  
+  scene.traverse((object) => {
+    if (object instanceof THREE.Line || object instanceof CSS2DObject) {
+      toRemove.push(object);
+      
+      // Suppression spécifique pour CSS2D
+      if (object instanceof CSS2DObject && object.element.parentNode) {
+        object.element.parentNode.removeChild(object.element);
+      }
+    }
+  });
+
+  toRemove.forEach(obj => scene.remove(obj));
+  
+  // Nettoyage forcé du renderer CSS2D
+  if (renderer) {
+    renderer.domElement.innerHTML = "";
+  }
+
+  setMeasurements([]);
+};
   useEffect(() => {
     if (!viewerRef.current || activeTool !== 'comment') return;
     const container = containerRef.current;
@@ -2987,6 +2915,7 @@ renderer.sortObjects = true;
     position.set(center.x + distance * 0.7, center.y + distance * 0.7, center.z + distance * 0.7);
     up.set(0, 1, 0); // L'axe "up" reste inchangé
   };
+  
   const handleCommentSubmit = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
@@ -3102,33 +3031,24 @@ renderer.sortObjects = true;
         >
           <Scissors className="h-5 w-5" />
         </Button>
-<Button
-  variant={activeTool === 'measure' ? "default" : "ghost"}
-  size="icon"
-  onClick={() => {
-    if (activeTool === 'measure') {
-      // Si déjà actif, désactiver
-      setActiveTool(null);
-      setMeasurementMode('none');
-      setCurrentPoints([]);
-      
-      // Nettoyer les points temporaires de mesure en cours
-      if (viewerRef.current) {
-        // Supprimer les mesures temporaires de la scène si nécessaire
-        const scene = viewerRef.current.context.getScene();
-        // Vous pouvez ajouter ici du code pour supprimer des indicateurs visuels temporaires
-      }
-    } else {
-      // Sinon, activer l'outil de mesure
-      setActiveTool('measure');
-      setMeasurementMode('distance');
-      setCurrentPoints([]);
-    }
-  }}
-  title="Mesurer"
->
-  <Ruler className="h-5 w-5" />
-</Button>
+        <Button
+          variant={activeTool === 'measure' ? "default" : "ghost"}
+          size="icon"
+          onClick={() => {
+            if (activeTool === 'measure') {
+              // Si déjà actif, désactiver
+              setActiveTool(null);
+              setMeasurementMode('none');
+            } else {
+              // Sinon, activer l'outil de mesure
+              setActiveTool('measure');
+              setMeasurementMode('distance');
+            }
+          }}
+          title="Mesurer"
+        >
+          <Ruler className="h-5 w-5" />
+        </Button>
 
         <Button
           variant={activeTool === 'hide' ? "default" : "ghost"}
@@ -3240,43 +3160,33 @@ renderer.sortObjects = true;
 <div className="absolute top-4 right-4 flex flex-col gap-3 z-20">
   {/* Bouton Iso View */}
   <Button
-    variant="outline"
-    size="sm"
-    onClick={handleIsoView}
-    className="aspect-square rounded-xl p-2 shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center bg-white/10 backdrop-blur border border-white/20"
-  >
-    <Box className="h-5 w-5 text-gray-700" />
-  </Button>
+      variant="outline"
+      size="sm"
+      onClick={handleIsoView}
+      className="aspect-square rounded-xl p-2 shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center bg-white/10 backdrop-blur border border-white/20"
+    >
+      <Home className="h-5 w-5 text-gray-700" />
+    </Button>
 
-  {/* View Cube avec perspective et style glassmorphism */}
-  <div className="rounded-xl backdrop-blur-md bg-white/10 shadow-lg p-2 hover:scale-105 transition-transform duration-300 border border-white/20">
-    <ViewCubeComponent 
-      ref={viewCubeRef}
-      onViewChange={handleViewChange}
-      size={100}
-      className="cursor-pointer"
-      style={{ transform: 'rotateX(20deg) rotateY(20deg)' }}
-    />
-  </div>
+
 </div>
 
 
-
-
-  {/* Panneau de propriété flottant */}
+{/* Panneau de propriété flottant */}
   {isSidebarOpen && selectedElement && (
-    <div 
-      className="absolute top-4 right-4 bottom-4 w-96 bg-white rounded-lg shadow-xl flex flex-col z-10 border border-gray-200"
-      style={{ maxHeight: 'calc(100% - 2rem)' }}
-    >
-      <PropertySidebar 
-        viewer={viewerRef.current} 
-        selectedElement={selectedElement} 
-        modelID={selectedModelID} 
-        onClose={() => setIsSidebarOpen(false)}
-      />
-    </div>
-  )}
+  <div 
+    className="absolute top-4 right-4 bottom-4 w-72 bg-white rounded-lg shadow-xl flex flex-col z-10 border border-gray-200"
+    style={{ maxHeight: 'calc(100% - 2rem)' }}
+  >
+    <PropertySidebar 
+      viewer={viewerRef.current} 
+      selectedElement={selectedElement} 
+      modelID={selectedModelID} 
+      onClose={() => setIsSidebarOpen(false)}
+    />
+    
+  </div>
+)}
 
 
         {/* Panneau Section */}
@@ -3331,41 +3241,49 @@ renderer.sortObjects = true;
     )}
   </div>
 )}
-        {/* Panneau Mesure */}
-        {activeTool === 'measure' && (
-          <div className="absolute bottom-20 left-4 bg-white p-4 rounded-lg shadow-lg">
-            <div className="flex flex-col gap-2">
-              <Button variant={measurementMode === 'distance' ? 'default' : 'ghost'} onClick={() => {
-                setMeasurementMode('distance');
-                setCurrentPoints([]);
-              }}>
-                Distance simple
-              </Button>
-              <Button variant={measurementMode === 'angle' ? 'default' : 'ghost'} onClick={() => {
-                setMeasurementMode('angle');
-                setCurrentPoints([]);
-              }}>
-                Mesure d'angle
-              </Button>
-              <Button variant={measurementMode === 'perpendicular' ? 'default' : 'ghost'} onClick={() => {
-                setMeasurementMode('perpendicular');
-                setCurrentPoints([]);
-              }}>
-                Distance perpendiculaire
-              </Button>
-              <Button variant="destructive" onClick={() => {
-                const scene = viewerRef.current?.context.getScene();
-                measurements.forEach(m => {
-                  if (m.line) scene?.remove(m.line);
-                  m.labels.forEach(label => scene?.remove(label));
-                });
-                setMeasurements([]);
-              }}>
-                Effacer toutes les mesures
-              </Button>
-            </div>
-          </div>
-        )}
+       {/* Panneau Mesure */}
+       {activeTool === 'measure' && (
+  <div className="absolute bottom-20 left-4 bg-white p-4 rounded-lg shadow-lg">
+    <div className="flex flex-col gap-2">
+      <Button 
+        variant={measurementMode === 'distance' ? 'default' : 'ghost'} 
+        onClick={() => setMeasurementMode('distance')}
+      >
+        Distance simple
+      </Button>
+      <Button 
+        variant={measurementMode === 'angle' ? 'default' : 'ghost'} 
+        onClick={() => setMeasurementMode('angle')}
+      >
+        Mesure d'angle
+      </Button>
+      <Button 
+        variant={measurementMode === 'perpendicular' ? 'default' : 'ghost'} 
+        onClick={() => setMeasurementMode('perpendicular')}
+      >
+        Distance perpendiculaire
+      </Button>
+      <Button 
+        variant="destructive" 
+        onClick={handleClearMeasurements}
+      >
+        Effacer toutes les mesures
+      </Button>
+    </div>
+  </div>
+)}
+
+      {/* Composant de mesure */}
+      {viewerRef.current && (
+    <MeasurementTool
+    viewer={viewerRef.current}
+    containerRef={containerRef}
+    active={activeTool === 'measure'}
+    measurementMode={measurementMode}
+    onMeasurementComplete={handleMeasurementComplete}
+    onClearMeasurements={handleClearMeasurements}
+  />
+      )}
         <TodoPanel
           todos={todos}
           onTodoSelect={restoreTodoView}
@@ -3632,4 +3550,4 @@ renderer.sortObjects = true;
 
 function useFrame(arg0: () => void) {
   throw new Error("Function not implemented.");
-}
+} 
