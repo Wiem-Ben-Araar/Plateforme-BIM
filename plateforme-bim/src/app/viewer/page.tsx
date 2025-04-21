@@ -1968,172 +1968,178 @@ const ClashDetectionPanel = ({ clashes, onClashSelect }) => {
   useEffect(() => {
     const initViewer = async () => {
       if (!containerRef.current || initializedRef.current) return;
-      
+    
       try {
         initializedRef.current = true;
-  
-        // 1. Initialisation de base avec vérification du container
         const viewer = new IfcViewerAPI({
           container: containerRef.current,
           backgroundColor: new THREE.Color(0xeeeeee),
+          powerPreference: "high-performance"
         });
-  
-        // 2. Attente que le renderer soit prêt avec système de vérification
-        await new Promise<void>((resolve) => {
-          const checkReady = () => {
-            if (viewer.context?.getRenderer()) {
-              // Configure le renderer une fois prêt
-              const renderer = viewer.context.getRenderer();
-              renderer.setPixelRatio(window.devicePixelRatio);
-              renderer.logarithmicDepthBuffer = true;
-renderer.sortObjects = true;
-              resolve();
-            } else {
-              setTimeout(checkReady, 50);
-            }
-          };
-          checkReady();
-        });
-  
-        // 3. Configuration des outils de base
+    
+        // Add proper lighting to the scene
+        const scene = viewer.context.getScene();
+        
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+        
+        // Add directional lights from multiple angles
+        const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight1.position.set(1, 2, 3);
+        scene.add(directionalLight1);
+        
+        const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight2.position.set(-1, 1, -2);
+        scene.add(directionalLight2);
+    
+        // Configuration avancée du renderer
+        const renderer = viewer.context.getRenderer();
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.physicallyCorrectLights = true;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+        // Configuration WASM - make sure the path is correct
         await viewer.IFC.setWasmPath("wasm/");
         viewer.clipper.active = true;
-        viewerRef.current = viewer;
-     
-        ///////////details property
-        containerRef.current.onclick = async () => {
-          try {
-            const result = await viewer.IFC.selector.pickIfcItem(false);
-            console.log("Résultat de la sélection:", result);
-        
-            if (!result) {
-              viewer.IFC.selector.unpickIfcItems();
-              setSelectedElement(null);
-              setSelectedModelID(null);
-              setIsSidebarOpen(false);
+        viewer.IFC.loader.ifcManager.applyWebIfcConfig({
+          COORDINATE_TO_ORIGIN: true,
+          USE_FAST_BOOLS: false
+        });
+    
+        // Chargement des modèles avec optimisation
+       // 5. Chargement des modèles IFC avec gestion d'erreur
+       const filesParam = searchParams.get("files");
+       if (filesParam) {
+         const fileURLs = JSON.parse(filesParam) as string[];
+         const newModels = [];
+ 
+         for (const url of fileURLs) {
+           try {
+             const model = await viewer.IFC.loadIfcUrl(url, {
+               applyMaterials: true,
+               coerceMaterials: false,
+             });
+ 
+             if (model?.mesh && model.modelID !== undefined) {
+               const decodedUrl = decodeURIComponent(url);
+               const match = decodedUrl.match(/(?:uploads\/)?\d+-(.+?)(?:\.ifc)?(?:\?.*)?$/);
+               const cleanName = match ? match[1] : `Modèle-${model.modelID}`;
+ 
+               newModels.push({
+                 id: model.modelID,
+                 name: cleanName,
+                 visible: true,
+               });
+             }
+           } catch (error) {
+             console.error(`Échec du chargement: ${url}`, error);
+           }
+         }
+ 
+         setLoadedModels(newModels);
+    
+          // Ajustement automatique de la caméra only if models were loaded
+          if (newModels.length > 0) {
+            console.log(`Adjusting camera for ${newModels.length} models`);
+            
+            try {
+              // Force scene update to ensure bounding box is correct
+              scene.updateMatrixWorld(true);
               
-              // Réinitialiser le centre de rotation au centre de la scène
-              const scene = viewer.context.getScene();
-              const sceneCenter = new THREE.Vector3();
-              new THREE.Box3().setFromObject(scene).getCenter(sceneCenter);
-              viewer.context.ifcCamera.cameraControls.setTarget(
-                sceneCenter.x, sceneCenter.y, sceneCenter.z, true
-              );
-            } else {
-              const modelID = result.modelID;
-              const id = result.id;
+              // Créer une boîte englobante
+              const bbox = new THREE.Box3();
+              
+              // Ajouter tous les objets à la boîte englobante
+              scene.traverse((object) => {
+                if (object.isMesh && object.geometry) {
+                  bbox.expandByObject(object);
+                }
+              });
+              
+              // Vérifier que la boîte englobante est valide
+              if (bbox.isEmpty()) {
+                console.warn("Bounding box is empty, using fallback values");
+                bbox.set(
+                  new THREE.Vector3(-5, -5, -5),
+                  new THREE.Vector3(5, 5, 5)
+                );
+              }
+              
+              // Créer des vecteurs pour le centre et la taille
+              const center = new THREE.Vector3();
+              const size = new THREE.Vector3();
+              
+              // Calculer le centre et la taille
+              bbox.getCenter(center);
+              bbox.getSize(size);
+              
+              const maxDim = Math.max(size.x, size.y, size.z);
         
-              setSelectedElement(id);
-              setSelectedModelID(modelID);
-              setIsSidebarOpen(true);
+              // Configuration caméra
+              const camera = viewer.context.getCamera();
+              camera.near = Math.max(0.1, maxDim * 0.001);
+              camera.far = Math.max(1000, maxDim * 10);
+              camera.updateProjectionMatrix();
         
-              // Trouver le mesh de l'élément sélectionné
-              const subset = viewer.IFC.selector.highlighted;
-              if (subset && subset.geometry) {
-                const bbox = new THREE.Box3().setFromObject(subset);
-                const center = bbox.getCenter(new THREE.Vector3());
-        
-                // Important: Définir ce point comme nouveau centre de rotation/pivot
-                viewer.context.ifcCamera.cameraControls.setTarget(
-                  center.x, center.y, center.z, true
+              // Position initiale avec des valeurs sécurisées
+              const cameraOffsetX = center.x + maxDim;
+              const cameraOffsetY = center.y + maxDim * 0.5;
+              const cameraOffsetZ = center.z + maxDim;
+              
+              // S'assurer que tous les paramètres sont des nombres
+              if (
+                isFinite(cameraOffsetX) && 
+                isFinite(cameraOffsetY) && 
+                isFinite(cameraOffsetZ) && 
+                isFinite(center.x) && 
+                isFinite(center.y) && 
+                isFinite(center.z)
+              ) {
+                viewer.context.ifcCamera.cameraControls.setLookAt(
+                  cameraOffsetX,
+                  cameraOffsetY,
+                  cameraOffsetZ,
+                  center.x,
+                  center.y,
+                  center.z,
+                  true
                 );
                 
-                // En option: ajuster la position de la caméra tout en gardant le même pivot
-                const distance = viewer.context.ifcCamera.cameraControls.getDistance();
-                const direction = new THREE.Vector3().subVectors(
-                  viewer.context.ifcCamera.camera.position, 
-                  center
-                ).normalize();
-                
-                viewer.context.ifcCamera.cameraControls.setPosition(
-                  center.x + direction.x * distance,
-                  center.y + direction.y * distance,
-                  center.z + direction.z * distance,
+                console.log("Camera positioned successfully", {
+                  from: [cameraOffsetX, cameraOffsetY, cameraOffsetZ],
+                  to: [center.x, center.y, center.z]
+                });
+              } else {
+                console.warn("Invalid camera position values, using default positioning");
+                viewer.context.ifcCamera.cameraControls.setLookAt(
+                  10, 10, 10,
+                  0, 0, 0,
                   true
                 );
               }
+            } catch (cameraError) {
+              console.error("Error setting up camera:", cameraError);
+              // Fallback camera positioning
+              viewer.context.ifcCamera.cameraControls.setLookAt(
+                10, 10, 10,
+                0, 0, 0,
+                true
+              );
             }
-          } catch (error) {
-            console.error("Erreur lors de la sélection:", error);
+          } else {
+            console.warn("No models were successfully loaded");
+            setError("No models were successfully loaded");
           }
-        };
-        
-          ///////////details property
-       // window.onmousemove = () => viewer.IFC.selector.prePickIfcItem();
-        // 4. Configuration du resize observer avec vérification
-        const resizeObserver = new ResizeObserver(() => {
-          if (containerRef.current && viewer.context?.getRenderer()) {
-            viewer.context.getRenderer().setSize(
-              containerRef.current.clientWidth,
-              containerRef.current.clientHeight
-            );
-            viewer.context.ifcCamera?.cameraControls?.update();
-          }
-        });
-        resizeObserver.observe(containerRef.current);
-  
-        // 5. Chargement des modèles IFC avec gestion d'erreur
-        const filesParam = searchParams.get("files");
-        if (filesParam) {
-          const fileURLs = JSON.parse(filesParam) as string[];
-          const newModels = [];
-  
-          for (const url of fileURLs) {
-            try {
-              const model = await viewer.IFC.loadIfcUrl(url, {
-                applyMaterials: true,
-                coerceMaterials: false,
-              });
-  
-              if (model?.mesh && model.modelID !== undefined) {
-                const decodedUrl = decodeURIComponent(url);
-                const match = decodedUrl.match(/(?:uploads\/)?\d+-(.+?)(?:\.ifc)?(?:\?.*)?$/);
-                const cleanName = match ? match[1] : `Modèle-${model.modelID}`;
-  
-                newModels.push({
-                  id: model.modelID,
-                  name: cleanName,
-                  visible: true,
-                });
-              }
-            } catch (error) {
-              console.error(`Échec du chargement: ${url}`, error);
-            }
-          }
-  
-          setLoadedModels(newModels);
-          // CENTRAGE ISO automatique
-if (newModels.length > 0) {
-  const scene = viewer.context.getScene();
-  const bbox = new THREE.Box3().setFromObject(scene);
-  const center = bbox.getCenter(new THREE.Vector3());
-  const size = bbox.getSize(new THREE.Vector3());
-
-  const distance = Math.max(size.x, size.y, size.z) * 1.5;
-  const position = new THREE.Vector3(
-    center.x + distance,
-    center.y + distance,
-    center.z + distance
-  );
-
-  viewer.context.ifcCamera.cameraControls.setTarget(
-    center.x, center.y, center.z, false
-  );
-
-  viewer.context.ifcCamera.cameraControls.setLookAt(
-    position.x, position.y, position.z,
-    center.x, center.y, center.z,
-    true
-  );
-}
-
-viewer.context.ifcCamera?.cameraControls?.update(true);
         }
-  
+    
+        viewerRef.current = viewer;
       } catch (error) {
-        console.error("Erreur d'initialisation:", error);
-        setError("Erreur lors du chargement des modèles");
-        initializedRef.current = false; // Réactive l'initialisation pour un nouvel essai
+        console.error("Initialization error:", error);
+        setError("Failed to initialize viewer: " + (error instanceof Error ? error.message : String(error)));
+        initializedRef.current = false;
       }
     };
   
@@ -2152,6 +2158,51 @@ viewer.context.ifcCamera?.cameraControls?.update(true);
       }
     };
   }, [searchParams]);
+  
+  useEffect(() => {
+    if (!viewerRef.current?.context) return;
+  
+    const viewer = viewerRef.current;
+    const controls = viewer.context.ifcCamera.cameraControls;
+  
+    // Paramètres avancés pour une navigation fluide
+    controls.smoothTime = 0.25;
+    controls.maxDistance = 1000;
+    controls.minDistance = 0.1;
+    controls.infinityDolly = false;
+    controls.dollyToCursor = true;
+    controls.dollySpeed = 1.0;
+    controls.truckSpeed = 2.0;
+    controls.rotateSpeed = 1.0;
+  
+    // Configuration des touches
+    controls.mouseButtons = {
+      left: CameraControls.ACTION.TRUCK,
+      middle: CameraControls.ACTION.DOLLY,
+      right: CameraControls.ACTION.ROTATE,
+      wheel: CameraControls.ACTION.DOLLY
+    };
+  
+    // Gestion des FPS
+    let lastTime = 0;
+    const targetFPS = 60;
+    const minFrameTime = 1000 / targetFPS;
+  
+    const updateControls = (time: number) => {
+      const delta = time - lastTime;
+      if (delta >= minFrameTime) {
+        controls.update(delta / 1000);
+        lastTime = time;
+      }
+      requestAnimationFrame(updateControls);
+    };
+  
+    requestAnimationFrame(updateControls);
+  
+    return () => {
+      // Cleanup
+    };
+  }, []);
   useEffect(() => {
     if (viewerRef.current && activeTool === 'select') {
       const viewer = viewerRef.current;
@@ -2400,7 +2451,31 @@ viewer.context.ifcCamera?.cameraControls?.update(true);
       }
     }
   };
+// Dans le useEffect qui configure les contrôles :
+useEffect(() => {
+  if (!viewerRef.current?.context) return;
 
+  const viewer = viewerRef.current;
+  const controls = viewer.context.ifcCamera.cameraControls;
+
+  // Paramètres anti-vibration
+  controls.dampingFactor = 0.25; // Plus élevé = plus stable
+  controls.draggingDampingFactor = 0.25;
+  controls.azimuthRotateSpeed = 0.5; // Réduire la vitesse
+  controls.polarRotateSpeed = 0.5;
+  controls.truckSpeed = 1.0;
+  controls.maxDistance = 1000;
+  controls.minDistance = 0.1;
+  
+  // Activer le damping
+  controls.enableDamping = true;
+  controls.dampingInertia = 0.95;
+
+  // Configurer le renderer pour de meilleures performances
+  const renderer = viewer.context.getRenderer();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limiter le pixel ratio
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+}, []);
   // useEffect(() => {
   //   if (!viewerRef.current?.context) return;
 
