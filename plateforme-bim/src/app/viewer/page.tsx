@@ -5,7 +5,7 @@ import { IfcViewerAPI } from "web-ifc-viewer";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "next/navigation";
 import { CSS2DObject } from "three/examples/jsm/renderers/CSS2DRenderer.js";
-import { User2, Trash2, ClipboardList, Plus, Calendar, X, ArrowLeft, AlertTriangle, Loader2 } from 'lucide-react';
+import { User2, Trash2, ClipboardList, Plus, Calendar, X, ArrowLeft, AlertTriangle, Loader2, Box } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import PropertySidebar from "@/components/PropertySidebar";
@@ -17,10 +17,6 @@ import {
   Ruler,
   Eye,
   EyeOff,
-  Box,
-  ZoomIn,
-  ZoomOut,
-  Home,
   MessageSquare, Cloud, ArrowRight, Type,
   RotateCcw,
   Filter,
@@ -36,6 +32,13 @@ import { Label } from "@/components/ui/label";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import ViewCubeComponent from "@/components/ViewCubeComponent";
+import CameraControls from 'camera-controls';
+import SectionTool from "@/components/SectionTool";
+
+
+
+
 
 
 
@@ -251,8 +254,7 @@ export default function ViewerPage() {
   const target = new THREE.Vector3();
   const [currentPlane, setCurrentPlane] = useState<PlaneData | null>(null);
   const [isIsolationActive, setIsIsolationActive] = useState(false);
-  const [viewStyle, setViewStyle] = useState<ViewStyle>('shaded');
-  const [arrowStart, setArrowStart] = useState<THREE.Vector3 | null>(null);
+
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentText, setCommentText] = useState<string>('');
   const [commentPosition, setCommentPosition] = useState<THREE.Vector3 | null>(null);
@@ -2000,39 +2002,49 @@ renderer.sortObjects = true;
         await viewer.IFC.setWasmPath("wasm/");
         viewer.clipper.active = true;
         viewerRef.current = viewer;
- 
+     
         ///////////details property
         containerRef.current.onclick = async () => {
           try {
             const result = await viewer.IFC.selector.pickIfcItem(false);
             console.log("Résultat de la sélection:", result);
-            
+        
             if (!result) {
               viewer.IFC.selector.unpickIfcItems();
               setSelectedElement(null);
               setSelectedModelID(null);
               setIsSidebarOpen(false);
             } else {
-              // Pour les versions récentes d'IFC.js
-              if (result.id !== undefined && result.modelID !== undefined) {
-                setSelectedElement(result.id);
-                setSelectedModelID(result.modelID);
-                setIsSidebarOpen(true);
-              } 
-              // Pour les versions plus anciennes ou formats différents
-              else if (typeof result === 'object') {
-                const id = result.id || result.expressID || result.elementID || Object.values(result)[0];
-                const modelID = result.modelID || viewer.IFC.loader.ifcModels[0]?.modelID;
-                
-                setSelectedElement(id);
-                setSelectedModelID(modelID);
-                setIsSidebarOpen(true);
+              const modelID = result.modelID;
+              const id = result.id;
+        
+              setSelectedElement(id);
+              setSelectedModelID(modelID);
+              setIsSidebarOpen(true);
+        
+              // Trouver le mesh de l'élément sélectionné
+              const subset = viewer.IFC.selector.highlighted; // ou viewer.IFC.selector.selection if you use select
+              if (subset && subset.geometry) {
+                const bbox = new THREE.Box3().setFromObject(subset);
+                const center = bbox.getCenter(new THREE.Vector3());
+        
+                // Centrer la caméra autour de l'objet sélectionné
+                viewer.context.ifcCamera.cameraControls.setLookAt(
+                  viewer.context.ifcCamera.camera.position.x,
+                  viewer.context.ifcCamera.camera.position.y,
+                  viewer.context.ifcCamera.camera.position.z,
+                  center.x,
+                  center.y,
+                  center.z,
+                  true
+                );
               }
             }
           } catch (error) {
             console.error("Erreur lors de la sélection:", error);
           }
         };
+        
           ///////////details property
        // window.onmousemove = () => viewer.IFC.selector.prePickIfcItem();
         // 4. Configuration du resize observer avec vérification
@@ -2196,15 +2208,6 @@ renderer.sortObjects = true;
   );
 
 
-
-
-
-
-  const resetSection = () => {
-    viewerRef.current?.clipper.deleteAllPlanes();
-    setCurrentPlane(null);
-    setSectionOffset(0);
-  };
   const calculateCameraDistance = (bbox: THREE.Box3) => {
     const size = bbox.getSize(new THREE.Vector3());
     return Math.max(size.x, size.y, size.z) * 1.5;
@@ -2284,143 +2287,9 @@ renderer.sortObjects = true;
     controls.update(true);
     viewer.context.getRenderer().render(scene, viewer.context.getCamera());
   };
-  const zoom = (factor: number) => {
-    const viewer = viewerRef.current;
-    if (!viewer?.context.ifcCamera?.cameraControls) return;
 
-    const controls = viewer.context.ifcCamera.cameraControls;
-    const scene = viewer.context.getScene();
 
-    // Calculer le bounding box global de tous les modèles
-    const bbox = new THREE.Box3();
-    viewer.IFC.loader.ifcManager.state.models.forEach((model: any) => {
-      if (model.mesh) {
-        model.mesh.updateMatrixWorld(true);
-        const modelBBox = new THREE.Box3().setFromObject(model.mesh);
-        bbox.union(modelBBox);
-      }
-    });
 
-    // Si aucun modèle chargé, utiliser une distance par défaut
-    const center = bbox.isEmpty() ? new THREE.Vector3() : bbox.getCenter(new THREE.Vector3());
-    const currentPosition = new THREE.Vector3();
-    controls.getPosition(currentPosition);
-
-    // Calculer la direction de la caméra par rapport au centre
-    const direction = new THREE.Vector3().subVectors(currentPosition, center).normalize();
-
-    // Calculer la distance actuelle de la caméra au centre
-    const currentDistance = currentPosition.distanceTo(center);
-
-    // Appliquer le facteur de zoom à la distance
-    const newDistance = currentDistance * factor;
-
-    // Limiter la distance minimale et maximale pour éviter des problèmes
-    const minDistance = 1; // Distance minimale (ne pas trop zoomer)
-    const maxDistance = 1000; // Distance maximale (ne pas trop dézoomer)
-    const clampedDistance = Math.min(Math.max(newDistance, minDistance), maxDistance);
-
-    // Calculer la nouvelle position de la caméra
-    const newPosition = new THREE.Vector3()
-      .copy(center)
-      .addScaledVector(direction, clampedDistance);
-
-    // Déplacer la caméra
-    controls.setLookAt(
-      newPosition.x,
-      newPosition.y,
-      newPosition.z,
-      center.x,
-      center.y,
-      center.z,
-      true
-    );
-
-    // Forcer la mise à jour du rendu
-    controls.update(true);
-    viewer.context.getRenderer().render(scene, viewer.context.getCamera());
-  };
-
-  // --- Mise à jour du plan de coupe ---
-  useEffect(() => {
-    if (!viewerRef.current || !currentPlane) return;
-    const { normal, initialDistance } = currentPlane;
-    const plane = new THREE.Plane(normal, initialDistance - sectionOffset);
-    viewerRef.current.clipper.deleteAllPlanes();
-    viewerRef.current.clipper.createPlane(plane);
-  }, [currentPlane, sectionOffset]);
-  useEffect(() => {
-    // Si l'outil n'est plus 'section', supprimer tous les plans de coupe
-    if (activeTool !== 'section' && viewerRef.current) {
-      viewerRef.current.clipper.deleteAllPlanes();
-      setCurrentPlane(null); // Réinitialiser l'état du plan courant
-    }
-  }, [activeTool]);
-
-  // --- Outil Section : clic pour définir un plan de coupe ---
-  useEffect(() => {
-    if (!viewerRef.current || activeTool !== 'section') return;
-
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleClick = async (event: MouseEvent) => {
-      try {
-        const viewer = viewerRef.current;
-        if (!viewer) return;
-
-        const rect = container.getBoundingClientRect();
-        const mouse = new THREE.Vector2(
-          ((event.clientX - rect.left) / rect.width) * 2 - 1,
-          -((event.clientY - rect.top) / rect.height) * 2 + 1
-        );
-
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(mouse, viewer.context.getCamera());
-
-        const ifcMeshes = viewer.IFC.loader.ifcManager.state.models
-          .filter(model => model.mesh?.visible)
-          .flatMap(model => {
-            const meshes: THREE.Object3D[] = [];
-            model.mesh?.traverse(child => {
-              if (child instanceof THREE.Mesh && child.visible) {
-                child.updateMatrixWorld(true);
-                if (child.geometry) {
-                  child.geometry.computeBoundingBox();
-                  child.geometry.computeBoundingSphere();
-                }
-                meshes.push(child);
-              }
-            });
-            return meshes;
-          });
-
-        const intersects = raycaster.intersectObjects(ifcMeshes, true);
-        if (intersects.length === 0) return;
-
-        const intersection = intersects[0];
-        let normal = intersection.face?.normal.clone();
-        if (!normal) throw new Error("No valid normal");
-
-        intersection.object.localToWorld(normal).normalize();
-        const plane = new THREE.Plane(normal, -normal.dot(intersection.point));
-
-        viewer.clipper.deleteAllPlanes();
-        viewer.clipper.createPlane();
-        setCurrentPlane({
-          normal,
-          initialDistance: intersection.distance
-        });
-        setSectionOffset(0);
-
-      } catch (error) {
-        console.warn("Section tool error:", error);
-      }
-    };
-
-    container.addEventListener('click', handleClick);
-    return () => container.removeEventListener('click', handleClick);
-  }, [activeTool]);
 
   // --- Outil Mesure : clic pour sélectionner des points et mesurer ---
     useEffect(() => {
@@ -2702,39 +2571,84 @@ renderer.sortObjects = true;
       viewerRef.current.context.getRenderer().render(scene, camera);
     }
   };
+  const viewCubeRef = useRef<any>(null);
+
+  // Fonction pour gérer les changements de vue depuis le ViewCube
+  const handleViewChange = (quaternion) => {
+    if (!controls) return;
+  
+    // Get the current target and camera position
+    const target = controls.getTarget(new THREE.Vector3());
+    
+    // Get current distance (if getDistance doesn't exist, calculate it)
+    let distance;
+    if (typeof controls.getDistance === 'function') {
+      distance = controls.getDistance();
+    } else {
+      // Calculate distance manually
+      const position = controls.getPosition(new THREE.Vector3());
+      distance = position.distanceTo(target);
+    }
+  
+    // Calculate new camera position based on quaternion
+    const direction = new THREE.Vector3(0, 0, 1);
+    direction.applyQuaternion(quaternion);
+    direction.multiplyScalar(-distance);
+  
+    const newPosition = new THREE.Vector3().copy(target).add(direction);
+  
+    // Use the appropriate method to update camera position
+    if (typeof controls.setLookAt === 'function') {
+      controls.setLookAt(
+        newPosition.x, newPosition.y, newPosition.z,
+        target.x, target.y, target.z,
+        true // Animation
+      );
+    } else if (typeof controls.moveTo === 'function') {
+      controls.moveTo(newPosition.x, newPosition.y, newPosition.z, true);
+      controls.lookAt(target.x, target.y, target.z, true);
+    } else if (controls.position && controls.quaternion) {
+      // Direct camera manipulation if no control methods exist
+      controls.position.copy(newPosition);
+      controls.quaternion.copy(quaternion);
+    }
+  };
+  
   useEffect(() => {
     if (!viewerRef.current?.context) return;
-
+    
     const viewer = viewerRef.current;
     const camera = viewer.context.getCamera();
     setCamera(camera);
-
-    // Safely check and set controls
+    
     const cameraControls = viewer.context?.ifcCamera?.cameraControls;
     if (cameraControls) {
       setControls(cameraControls);
+      
 
-      // Update camera state whenever it changes
-      const updateCameraState = () => {
-        if (!viewer.context) return;
+      cameraControls.mouseButtons.left = CameraControls.ACTION.TRUCK;
+      cameraControls.mouseButtons.right = CameraControls.ACTION.ROTATE;
+      
+ 
 
-        const cam = viewer.context.getCamera();
-        const target = new THREE.Vector3();
-        cameraControls.getTarget(target);
-
-        setCameraPosition(cam.position.clone());
-        setCameraTarget(target);
-        setCameraUp(cam.up.clone());
+  
+      const updateViewCube = () => {
+        if (!viewCubeRef.current) return;
+        
+        // Synchroniser la rotation du ViewCube avec celle de la caméra
+        viewCubeRef.current.setQuaternion(camera.quaternion);
       };
-
-      cameraControls.addEventListener('control', updateCameraState);
-
+      
+      // Ajouter l'écouteur d'événements
+      cameraControls.addEventListener('control', updateViewCube);
+      cameraControls.addEventListener('update', updateViewCube);
+      
       return () => {
-        cameraControls.removeEventListener('control', updateCameraState);
+        cameraControls.removeEventListener('control', updateViewCube);
+        cameraControls.removeEventListener('update', updateViewCube);
       };
     }
   }, [viewerRef.current]);
-
 
 
 
@@ -2758,6 +2672,9 @@ renderer.sortObjects = true;
 
   // --- Changement de style d'affichage ---
   const initialMaterials = useRef(new WeakMap<THREE.Object3D, THREE.Material | THREE.Material[]>());
+  const mainCameraRef = useRef<any>(null);
+  
+  // Fonction pour gérer les changements de vue
 
   const setViewStyleMode = (style: 'shaded' | 'wireframe' | 'hidden-line' | null) => {
     if (!viewerRef.current) return;
@@ -3051,7 +2968,25 @@ renderer.sortObjects = true;
       }
     };
   }, [commentPosition, selectedAnnotationType]);
+  const object3D = new THREE.Object3D(); // Exemple d'objet 3D, remplace-le par ton objet réel
+  const bbox = new THREE.Box3().setFromObject(object3D); // Calcule la boîte de délimitation autour de l'objet
+  
 
+  // Définir la position de la caméra (initialisation si pas déjà défini)
+  const position = new THREE.Vector3();  // Assurer que `position` est défini
+  const up = new THREE.Vector3(0, 1, 0); // Axe "up" de la caméra
+
+  const handleIsoView = () => {
+    setView('iso'); // Changer la vue
+
+    // Calculer la distance et le centre de la boîte de délimitation
+    const distance = bbox.isEmpty() ? 50 : calculateCameraDistance(bbox);
+    const center = bbox.isEmpty() ? new THREE.Vector3() : bbox.getCenter(new THREE.Vector3());
+
+    // Définir la position de la caméra pour la vue iso
+    position.set(center.x + distance * 0.7, center.y + distance * 0.7, center.z + distance * 0.7);
+    up.set(0, 1, 0); // L'axe "up" reste inchangé
+  };
   const handleCommentSubmit = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
@@ -3094,7 +3029,10 @@ renderer.sortObjects = true;
     setCommentText(""); // Réinitialiser le texte du commentaire
     setCommentPosition(null); // Réinitialiser la position
   };
-
+  const changeView = (viewName) => {
+    // Votre logique pour changer la vue
+    console.log("Changing view to:", viewName);
+  };
   // Charger les annotations de l'utilisateur
   useEffect(() => {
     const loadUserAnnotations = async () => {
@@ -3154,38 +3092,16 @@ renderer.sortObjects = true;
         </Button>
 
 
-        <Button 
-  variant={activeTool === 'select' ? "default" : "ghost"}
-  size="icon"
-  onClick={() => {
-    if (!viewerRef.current?.IFC?.selector) return;
-    setActiveTool(prev => prev === 'select' ? null : 'select');
-    viewerRef.current.IFC.selector.active = activeTool !== 'select';
-  }}
-  title="Sélectionner"
->
-  <Cuboid className="h-5 w-5" />
-</Button>
-<Button
-  variant={activeTool === 'section' ? "default" : "ghost"}
-  size="icon"
-  onClick={() => {
-    if (activeTool === 'section') {
-      // Si déjà actif, désactiver et supprimer les plans de coupe
-      setActiveTool(null);
-      if (viewerRef.current) {
-        viewerRef.current.clipper.deleteAllPlanes();
-        setCurrentPlane(null); // Réinitialiser l'état du plan courant
-      }
-    } else {
-      // Sinon, activer
-      setActiveTool('section');
-    }
-  }}
-  title="Plan de coupe"
->
-  <Scissors className="h-5 w-5" />
-</Button>
+        <Button
+          variant={activeTool === 'section' ? "default" : "ghost"}
+          size="icon"
+          onClick={() => {
+            setActiveTool(activeTool === 'section' ? null : 'section');
+          }}
+          title="Plan de coupe"
+        >
+          <Scissors className="h-5 w-5" />
+        </Button>
 <Button
   variant={activeTool === 'measure' ? "default" : "ghost"}
   size="icon"
@@ -3321,47 +3237,32 @@ renderer.sortObjects = true;
           className="absolute inset-0 bg-white"
           style={{ pointerEvents: loading ? 'none' : 'auto' }}
         />
+<div className="absolute top-4 right-4 flex flex-col gap-3 z-20">
+  {/* Bouton Iso View */}
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={handleIsoView}
+    className="aspect-square rounded-xl p-2 shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center bg-white/10 backdrop-blur border border-white/20"
+  >
+    <Box className="h-5 w-5 text-gray-700" />
+  </Button>
 
-        {/* Contrôles de vue en haut à droite */}
-        <div className="absolute top-4 right-4 flex flex-col gap-4">
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-4">
-            <div className="grid grid-cols-3 gap-2">
-              <Button variant="outline" size="sm" onClick={() => setView('top')} className="aspect-square hover:bg-blue-100">
-                Top
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('front')} className="aspect-square hover:bg-blue-100">
-                Front
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('right')} className="aspect-square hover:bg-blue-100">
-                Right
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('left')} className="aspect-square hover:bg-blue-100">
-                Left
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('iso')} className="aspect-square hover:bg-blue-100">
-                <Box className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('back')} className="aspect-square hover:bg-blue-100">
-                Back
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setView('bottom')} className="aspect-square hover:bg-blue-100">
-                Bottom
-              </Button>
-            </div>
-          </div>
+  {/* View Cube avec perspective et style glassmorphism */}
+  <div className="rounded-xl backdrop-blur-md bg-white/10 shadow-lg p-2 hover:scale-105 transition-transform duration-300 border border-white/20">
+    <ViewCubeComponent 
+      ref={viewCubeRef}
+      onViewChange={handleViewChange}
+      size={100}
+      className="cursor-pointer"
+      style={{ transform: 'rotateX(20deg) rotateY(20deg)' }}
+    />
+  </div>
+</div>
 
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-2 flex flex-col gap-2">
-            <Button variant="outline" size="icon" onClick={() => zoom(0.8)} title="Zoom in" className="hover:bg-blue-100">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => zoom(1.2)} title="Zoom out" className="hover:bg-blue-100">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={resetView} title="Reset view" className="hover:bg-blue-100">
-              <Home className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+
+
+
   {/* Panneau de propriété flottant */}
   {isSidebarOpen && selectedElement && (
     <div 
@@ -3379,24 +3280,17 @@ renderer.sortObjects = true;
 
 
         {/* Panneau Section */}
-        {activeTool === 'section' && (
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-lg shadow-lg p-4">
-            <div className="space-y-4">
-              {!currentPlane ? (
-                <div className="text-sm text-gray-600">
-                  Cliquez sur une surface du modèle pour définir le plan de coupe
-                </div>
-              ) : (
-                <div className="flex justify-end">
-                  <Button variant="outline" onClick={resetSection} className="flex gap-2">
-                    <RotateCcw className="h-4 w-4" />
-                    Réinitialiser
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {viewerRef.current && (
+        <SectionTool
+          viewer={viewerRef.current}
+          containerRef={containerRef}
+          isActive={activeTool === 'section'}
+          onSectionCreated={(plane) => {
+            console.log('Nouveau plan de coupe créé:', plane);
+            // Vous pouvez faire des actions supplémentaires ici
+          }}
+        />
+      )}
    
 {activeTool === 'clashDetection' && (
   <div className="absolute top-0 right-0 w-80 bg-white shadow-lg">
