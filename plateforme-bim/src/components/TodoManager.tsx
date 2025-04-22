@@ -677,7 +677,305 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
       toast.error("Échec de la suppression")
     }
   }
-
+  const exportBCF = () => {
+    const JSZip = require("jszip");
+    const zip = new JSZip();
+  
+    // Fichier de version BCF - obligatoire et conforme à la spécification BCF 2.1
+    zip.file(
+      "bcf.version",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <Version VersionId="2.1">
+    <DetailedVersion>2.1</DetailedVersion>
+  </Version>`
+    );
+  
+    console.log("Création du fichier BCF avec", todos.length, "todos");
+  
+    // Limiter à maximum 10 todos pour éviter les problèmes de taille
+    const todosToExport = todos.slice(0, 10);
+  
+    // Fonction pour s'assurer que les vecteurs direction et up sont perpendiculaires
+    function ensureVectorsPerpendicular(camera) {
+      // Normaliser le vecteur direction
+      const dirLength = Math.sqrt(
+        camera.direction.x * camera.direction.x +
+        camera.direction.y * camera.direction.y +
+        camera.direction.z * camera.direction.z
+      );
+      
+      if (dirLength > 0) {
+        camera.direction.x /= dirLength;
+        camera.direction.y /= dirLength;
+        camera.direction.z /= dirLength;
+      }
+      
+      // Normaliser le vecteur up initial
+      const upLength = Math.sqrt(
+        camera.up.x * camera.up.x +
+        camera.up.y * camera.up.y +
+        camera.up.z * camera.up.z
+      );
+      
+      if (upLength > 0) {
+        camera.up.x /= upLength;
+        camera.up.y /= upLength;
+        camera.up.z /= upLength;
+      }
+      
+      // Calculer le produit scalaire entre direction et up
+      const dotProduct = 
+        camera.direction.x * camera.up.x +
+        camera.direction.y * camera.up.y +
+        camera.direction.z * camera.up.z;
+      
+      // Si les vecteurs ne sont pas perpendiculaires
+      if (Math.abs(dotProduct) > 0.0001) {
+        // Utiliser un produit vectoriel pour créer un vecteur perpendiculaire
+        // Calculons un vecteur perpendiculaire à direction en utilisant un vecteur auxiliaire
+        let auxVector = { x: 0, y: 1, z: 0 }; // Utiliser (0,1,0) comme vecteur auxiliaire
+        
+        // Si direction est proche de (0,1,0), utiliser (1,0,0) comme vecteur auxiliaire
+        if (Math.abs(camera.direction.y) > 0.9) {
+          auxVector = { x: 1, y: 0, z: 0 };
+        }
+        
+        // Calculer le produit vectoriel pour obtenir un vecteur perpendiculaire à direction
+        const crossX = camera.direction.y * auxVector.z - camera.direction.z * auxVector.y;
+        const crossY = camera.direction.z * auxVector.x - camera.direction.x * auxVector.z;
+        const crossZ = camera.direction.x * auxVector.y - camera.direction.y * auxVector.x;
+        
+        // Normaliser le résultat pour obtenir un vecteur up perpendiculaire unitaire
+        const crossLength = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
+        
+        if (crossLength > 0) {
+          camera.up.x = crossX / crossLength;
+          camera.up.y = crossY / crossLength;
+          camera.up.z = crossZ / crossLength;
+        } else {a
+          // Fallback si le produit vectoriel est nul
+          camera.up = { x: 0, y: 1, z: 0 };
+          if (Math.abs(camera.direction.y) > 0.9) {
+            camera.up = { x: 1, y: 0, z: 0 };
+          }
+        }
+      }
+      
+      return camera;
+    }
+  
+    // Fonction pour mapper les priorités du schéma Mongoose aux valeurs BCF
+    function mapPriority(priority) {
+      switch (priority) {
+        case "low": return "Low";
+        case "medium": return "Medium";
+        case "high": return "High";
+        default: return "Medium";
+      }
+    }
+  
+    // Fonction pour générer un UUID au format standard
+    function generateUUID() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16).toUpperCase();
+      });
+    }
+  
+    // Fonction de conversion pour ajuster les coordonnées au format BIMTrack/Revit
+    function convertCoordinates(point) {
+      // Facteur de conversion basé sur les exemples fournis
+      // Environ 92.9 (3219.86 / 34.658278583894344)
+      const conversionFactor = 92.9;
+      
+      // Conversion et inversion d'axes si nécessaire pour Revit/BIMTrack
+      return {
+        // Inversion axes y et z pour correspondre à la convention de Revit
+        x: point.x * conversionFactor,
+        y: point.z * conversionFactor, // z devient y
+        z: point.y * conversionFactor  // y devient z
+      };
+    }
+  
+    // Pour chaque todo, créer un dossier avec un GUID standard
+    todosToExport.forEach((todo, index) => {
+      // Utiliser un GUID fixe pour le premier todo (pour le débogage)
+      const topicGuid = index === 0
+        ? "63E78882-7C6A-4BF7-8982-FC478AFB9C97"
+        : generateUUID();
+  
+      console.log(`Création du dossier pour todo '${todo.title}' avec GUID ${topicGuid}`);
+      const topicFolder = zip.folder(topicGuid);
+      
+      // Vérifier que le viewpoint est bien chargé
+      if (!todo.viewpoint) {
+        console.log(`Todo '${todo.title}' n'a pas de viewpoint associé, utilisation de valeurs par défaut.`);
+      }
+      
+      const viewpointGuid = todo.viewpoint?.guid || generateUUID();
+  
+      // Nettoyer les textes pour éviter les problèmes XML
+      const safeTitle = (todo.title || "Todo").replace(/[<>&'"]/g, "");
+      const safeDesc = (todo.description || "Description").replace(/[<>&'"]/g, "");
+      const safeAuthor = (todo.createdBy || "User").replace(/[<>&'"]/g, "");
+  
+      // Fichier markup.bcf - contient les métadonnées du todo
+      // Format strictement conforme à BCF 2.1
+      topicFolder.file(
+        "markup.bcf",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <Markup>
+    <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="${todo.status || 'Open'}">
+      <Title>${safeTitle}</Title>
+      <Description>${safeDesc}</Description>
+      <CreationDate>${new Date(todo.createdAt).toISOString()}</CreationDate>
+      <CreationAuthor>${safeAuthor}</CreationAuthor>
+      <ModifiedDate>${new Date(todo.updatedAt || todo.createdAt).toISOString()}</ModifiedDate>
+      <ModifiedAuthor>${safeAuthor}</ModifiedAuthor>
+      <Priority>${mapPriority(todo.priority)}</Priority>
+    </Topic>
+    <Viewpoints>
+      <Viewpoint Guid="${viewpointGuid}">
+        <ViewpointReference>viewpoint.bcfv</ViewpointReference>
+        <Snapshot>snapshot.png</Snapshot>
+      </Viewpoint>
+    </Viewpoints>
+  </Markup>`
+      );
+  
+      // Extraire les données de caméra du viewpoint
+      let camera = {
+        position: { x: 0, y: 0, z: 0 },
+        direction: { x: 0, y: 0, z: -1 },
+        up: { x: 0, y: 1, z: 0 }
+      };
+  
+      if (todo.viewpoint) {
+        // Utiliser les données du viewpoint avec conversion pour BIMTrack/Revit
+        const convertedPosition = convertCoordinates({
+          x: todo.viewpoint.camera_view_point.x,
+          y: todo.viewpoint.camera_view_point.y,
+          z: todo.viewpoint.camera_view_point.z
+        });
+  
+     
+        camera = {
+          position: {
+            x: -todo.viewpoint.camera_view_point.x,
+            y: -todo.viewpoint.camera_view_point.z,
+            z: todo.viewpoint.camera_view_point.y
+          },
+          direction: {
+            x: -todo.viewpoint.camera_direction.x,
+            y: -todo.viewpoint.camera_direction.z,
+            z: todo.viewpoint.camera_direction.y
+          },
+          up: {
+            x: -todo.viewpoint.camera_up_vector.x,
+            y: -todo.viewpoint.camera_up_vector.z,
+            z: todo.viewpoint.camera_up_vector.y
+          }
+        };
+        
+        
+  
+        // S'assurer que les vecteurs sont perpendiculaires
+        camera = ensureVectorsPerpendicular(camera);
+      } else {
+        console.log("Viewpoint manquant, utilisation de valeurs par défaut");
+        // Valeurs par défaut garanties perpendiculaires avec échelle BIMTrack
+        camera = {
+          position: { x: 10 * 92.9, y: 10 * 92.9, z: 10 * 92.9 },
+          direction: { x: 0, y: 0, z: -1 },
+          up: { x: 0, y: 1, z: 0 }
+        };
+      }
+  
+      // Fichier viewpoint.bcfv - contient les informations de caméra
+      // Format strictement conforme à BCF 2.1 pour Revit
+      topicFolder.file(
+        "viewpoint.bcfv",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <VisualizationInfo Guid="${viewpointGuid}">
+    <PerspectiveCamera>
+      <CameraViewPoint>
+        <X>${camera.position.x.toFixed(6)}</X>
+        <Y>${camera.position.y.toFixed(6)}</Y>
+        <Z>${camera.position.z.toFixed(6)}</Z>
+      </CameraViewPoint>
+      <CameraDirection>
+        <X>${camera.direction.x.toFixed(6)}</X>
+        <Y>${camera.direction.y.toFixed(6)}</Y>
+        <Z>${camera.direction.z.toFixed(6)}</Z>
+      </CameraDirection>
+      <CameraUpVector>
+        <X>${camera.up.x.toFixed(6)}</X>
+        <Y>${camera.up.y.toFixed(6)}</Y>
+        <Z>${camera.up.z.toFixed(6)}</Z>
+      </CameraUpVector>
+      <FieldOfView>${todo.viewpoint?.field_of_view || 20.0}</FieldOfView>
+    </PerspectiveCamera>
+    <Components>
+      <ViewSetupHints SpacesVisible="false" SpaceBoundariesVisible="false" OpeningsVisible="false"/>
+    </Components>
+  </VisualizationInfo>`
+      );
+  
+      // Ajouter la capture d'écran
+      if (todo.screenshot) {
+        try {
+          // Extraire la partie base64 de l'URL data
+          let base64Data = todo.screenshot;
+          if (base64Data.includes("data:image/png;base64,")) {
+            base64Data = base64Data.split("data:image/png;base64,")[1];
+          }
+  
+          if (base64Data && base64Data.trim() !== "") {
+            topicFolder.file("snapshot.png", base64Data, { base64: true });
+            console.log("Capture d'écran ajoutée pour:", todo.title);
+          } else {
+            throw new Error("Données d'image invalides");
+          }
+        } catch (error) {
+          console.error("Erreur lors du traitement de l'image:", error);
+          // Image de secours en cas d'erreur (pixel transparent 1x1)
+          const fallbackPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+          topicFolder.file("snapshot.png", fallbackPng, { base64: true });
+        }
+      } else {
+        // Image par défaut si pas de capture
+        const defaultPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        topicFolder.file("snapshot.png", defaultPng, { base64: true });
+      }
+  
+      // Ajouter un fichier project.bcfp pour la compatibilité Revit
+      topicFolder.file(
+        "project.bcfp",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <ProjectExtension>
+    <Project ProjectId="${generateUUID()}">
+      <Name>BIM Project</Name>
+    </Project>
+  </ProjectExtension>`
+      );
+    });
+  
+    // Générer et télécharger le fichier
+    zip.generateAsync({ type: "blob" })
+      .then((content) => {
+        console.log("Fichier BCF généré avec succès");
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "revit_issues.bcf";
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch((error) => {
+        console.error("Erreur lors de la génération du fichier BCF:", error);
+      });
+  };
   // Fonction pour basculer l'affichage du panneau de todos
   const toggleTodosTool = () => {
     if (activeTool === 'todos') {
@@ -700,7 +998,8 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
         toggleTodoPanel: toggleTodosTool,
         restoreView: restoreTodoView,
         getTodos: () => todos,
-        getActiveTool: () => activeTool
+        getActiveTool: () => activeTool,
+        exportBCF: exportBCF 
       };
     }
     
@@ -709,7 +1008,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
         delete window.todoManager;
       }
     };
-  }, [todos, activeTool]);
+  }, [todos, activeTool, exportBCF]);
 
   return (
     <>
