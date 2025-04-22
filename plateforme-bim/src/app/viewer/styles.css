@@ -1,101 +1,16 @@
-.annotation-marker {
-    position: relative;
-    cursor: pointer;
-    transition: transform 0.2s;
-    pointer-events: all;
-  }
-  
-  .annotation-marker:hover {
-    transform: scale(1.1);
-    z-index: 1000;
-  }
-  
-  .annotation-marker.text .marker-icon {
-    background: rgba(255, 255, 255, 0.9);
-    border: 2px solid #3b82f6;
-    border-radius: 4px;
-    padding: 4px;
-  }
-  
-  .annotation-marker.text .marker-icon svg {
-    color: #3b82f6;
-  }
-  
-  /* Cloud marker style */
-  .marker-icon.cloud {
-    background: rgba(59, 130, 246, 0.9);
-    border-radius: 16px;
-    padding: 6px;
-    color: white;
-  }
-  
-  /* Arrow marker style */
-  .marker-icon.arrow {
-    background: rgba(239, 68, 68, 0.9);
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-    color: white;
-  }
-  
-  /* Text marker style */
-  .marker-icon.text {
-    background: rgba(16, 185, 129, 0.9);
-    border-radius: 4px;
-    color: white;
-  }
-  
-  .marker-content {
-    position: absolute;
-    left: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    background: white;
-    border-radius: 8px;
-    padding: 12px;
-    margin-left: 12px;
-    width: 240px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.3s ease;
-  }
-  
-  .annotation-marker:hover .marker-content {
-    opacity: 1;
-    visibility: visible;
-  }
-  
-  .marker-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    color: #666;
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .marker-text {
-    font-size: 14px;
-    color: #333;
-    line-height: 1.4;
-  }
-  
-  .marker-icon svg {
-    width: 16px;
-    height: 16px;
-  }
-  .annotation-text {
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    color: black;
-    background-color: white;
-    padding: 4px;
-    border-radius: 4px;
-    border: 1px solid black;
-    pointer-events: auto;
-    cursor: pointer;
-  }
+/* globals.css */
+.annotation-label {
+  background: rgba(255, 255, 255, 0.9);
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #4299e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-family: sans-serif;
+  font-size: 14px;
+  color: #2d3748;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
   .sidebar-container {
     position: absolute;
     top: 0;
@@ -152,4 +67,121 @@
   
   .sidebar-container.active .property-sidebar {
     animation: slideIn 0.3s ease-out;
+  }
+
+  .section-controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    min-width: 250px;
+    z-index: 1000;
+  }
+  
+  .section-planes-list {
+    margin-bottom: 15px;
+    max-height: 150px;
+    overflow-y: auto;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+  }
+  
+  .section-plane-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 5px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .section-plane-item.selected {
+    background-color: #e0e0ff;
+  }
+  
+  .section-plane-item.inactive {
+    opacity: 0.6;
+  }
+  
+  .plane-selector {
+    flex-grow: 1;
+    font-weight: 500;
+  }
+  
+  .plane-actions {
+    display: flex;
+    gap: 5px;
+  }
+  
+  .plane-actions button {
+    padding: 2px 5px;
+    font-size: 12px;
+    border-radius: 3px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+  }
+  
+  .selected-plane-controls {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #ddd;
+  }
+  
+  .selected-plane-controls label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+  
+  .selected-plane-controls input[type="range"] {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  .section-offset-value {
+    margin-bottom: 10px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  
+  .section-global-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .add-plane-info, .max-planes-reached {
+    font-size: 13px;
+    margin-bottom: 10px;
+    padding: 5px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  
+  .add-plane-info {
+    background-color: #e8f4ff;
+  }
+  
+  .max-planes-reached {
+    background-color: #fff0f0;
+  }
+  
+  button {
+    padding: 8px 12px;
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  
+  button:hover {
+    background-color: #1565c0;
   }

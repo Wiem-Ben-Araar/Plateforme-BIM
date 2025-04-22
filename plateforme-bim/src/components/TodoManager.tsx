@@ -1,0 +1,771 @@
+"use client"
+
+import React, { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { User2, Trash2, X, Plus } from "lucide-react"
+import * as THREE from "three"
+
+// Interface Todo
+export interface Todo {
+  _id: string
+  id?: string
+  title: string
+  description?: string
+  status: "open" | "in-progress" | "resolved" | "closed"
+  priority: "low" | "medium" | "high"
+  createdBy: string
+  userId?: string
+  assignedTo?: string
+  project: string
+  createdAt: Date
+  updatedAt?: Date
+  screenshot?: string
+  viewpoint?: {
+    _id?: string
+    guid?: string
+    camera_view_point?: { x: number; y: number; z: number }
+    camera_direction?: { x: number; y: number; z: number }
+    camera_up_vector?: { x: number; y: number; z: number }
+    field_of_view?: number
+    position?: { x: number; y: number; z: number }
+    target?: { x: number; y: number; z: number }
+    up?: { x: number; y: number; z: number }
+    fieldOfView?: number
+    _doc?: any
+  }
+}
+
+// Sous-composant TodoPanel
+function TodoPanel({
+  todos,
+  onTodoSelect,
+  onTodoDelete,
+  onTodoStatusChange,
+  onTodoAssign,
+  activeTool,
+  onCreateNote,
+}: {
+  todos: Todo[]
+  onTodoSelect: (todo: Todo) => void
+  onTodoDelete: (id: string) => void
+  onTodoStatusChange: (id: string, status: Todo["status"]) => void
+  onTodoAssign: (id: string, userId: string) => void
+  activeTool: string | null
+  onCreateNote: () => void
+}) {
+  if (activeTool !== "todos") return null
+
+  return (
+    <div className="absolute right-4 top-20 w-96 bg-white rounded-lg shadow-lg p-4 max-h-[80vh] overflow-auto z-10">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold">Todos</h3>
+        <div className="flex gap-2 items-center">
+          <Badge variant="outline">{todos.length}</Badge>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={onCreateNote}
+             className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+             New Todo
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {todos.map((todo) => (
+          <div
+            key={todo._id || todo.id}
+            className="border rounded-lg p-3 hover:border-blue-500 transition-colors cursor-pointer"
+            onClick={() => onTodoSelect(todo)}
+          >
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h4 className="font-medium">{todo.title}</h4>
+                <p className="text-sm text-gray-600 line-clamp-2">{todo.description}</p>
+              </div>
+              <Badge
+                className={
+                  todo.status === "open"
+                    ? "bg-red-100 text-red-800"
+                    : todo.status === "in-progress"
+                      ? "bg-yellow-100 text-yellow-800"
+                      : "bg-green-100 text-green-800"
+                }
+              >
+                {todo.status}
+              </Badge>
+            </div>
+
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <div className="flex items-center gap-2">
+                <User2 className="h-4 w-4" />
+                <Select
+                  value={todo.assignedTo || ""}
+                  onValueChange={(value) => onTodoAssign(todo._id || todo.id || "", value)}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue placeholder="Assign to..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="user1">John Doe</SelectItem>
+                      <SelectItem value="user2">Jane Smith</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select
+                  value={todo.status}
+                  onValueChange={(value: Todo["status"]) => onTodoStatusChange(todo._id || todo.id || "", value)}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="in-progress">In Progress</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTodoDelete(todo._id || todo.id || "")
+                  }}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation() // Empêche le déclenchement du onClick du parent
+                    onTodoSelect(todo)  // Cette ligne appelle déjà restoreTodoView
+                  }}
+                  className="text-blue-500 hover:text-blue-700"
+                  title="Restore View"
+                >
+                  {/* Icône de caméra au lieu de Eye */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
+                    <circle cx="12" cy="13" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2 text-xs text-gray-400">
+              Created by {todo.createdBy} on {new Date(todo.createdAt).toLocaleDateString()}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Sous-composant TodoCreationModal
+function TodoCreationModal({
+  isOpen,
+  onClose,
+  newTodo,
+  setNewTodo,
+  onCreateTodo,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  newTodo: {
+    title: string
+    description: string
+    priority: "low" | "medium" | "high"
+  }
+  setNewTodo: React.Dispatch<
+    React.SetStateAction<{
+      title: string
+      description: string
+      priority: "low" | "medium" | "high"
+    }>
+  >
+  onCreateTodo: () => void
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-[480px] max-h-[90vh] overflow-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold">Create New Todo</h3>
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                placeholder="Enter todo title"
+                value={newTodo.title}
+                onChange={(e) => setNewTodo((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="description">Description</Label>
+              <textarea
+                id="description"
+                className="w-full min-h-[100px] p-2 border rounded-md"
+                placeholder="Enter todo description"
+                value={newTodo.description}
+                onChange={(e) => setNewTodo((prev) => ({ ...prev, description: e.target.value }))}
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="priority">Priority</Label>
+              <Select
+                value={newTodo.priority}
+                onValueChange={(value: "low" | "medium" | "high") =>
+                  setNewTodo((prev) => ({ ...prev, priority: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={onCreateTodo} disabled={!newTodo.title}>
+              Create Todo
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Composant principal TodoManager
+interface TodoManagerProps {
+  viewerRef: React.RefObject<any>
+  session: any
+  toast: any
+}
+
+export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
+  const [todos, setTodos] = useState<Todo[]>([])
+  const [isCreatingTodo, setIsCreatingTodo] = useState(false)
+  const [activeTool, setActiveTool] = useState<string | null>(null)
+  const [newTodo, setNewTodo] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as const,
+  })
+
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        // Récupérer l'ID du projet depuis l'URL
+        const urlParams = new URLSearchParams(window.location.search)
+        const projectId = urlParams.get('projectId')
+
+        if (!projectId) {
+          console.error("Project ID is missing")
+          return
+        }
+
+        const response = await fetch(`/api/todos?projectId=${projectId}`)
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        setTodos(data)
+      } catch (error) {
+        console.error("Failed to fetch todos", error)
+      }
+    }
+
+    fetchTodos()
+  }, [])
+
+  const createTodo = async () => {
+    if (!viewerRef.current || !newTodo.title) return
+  
+    try {
+      // Récupérer la caméra et les contrôles de la vue
+      const camera = viewerRef.current.context.getCamera()
+      const controls = viewerRef.current.context.ifcCamera.cameraControls
+  
+      // Calculer le point cible à partir des contrôles de caméra
+      const target = new THREE.Vector3()
+      controls.getTarget(target)
+  
+      const currentUser = session?.user
+      console.log("Current user from session:", currentUser)
+      
+      if (!currentUser || !currentUser.id) {
+        console.error("Utilisateur non connecté ou ID utilisateur manquant")
+        toast.error("Vous devez être connecté pour créer un todo")
+        return
+      }
+  
+      const urlParams = new URLSearchParams(window.location.search)
+      const projectId = urlParams.get('projectId')
+  
+      if (!projectId) {
+        console.error("Project ID is missing")
+        toast.error("Project ID is required. Please open a project first.")
+        return
+      }
+  
+      const fieldOfView = camera.fov || 45
+  
+      const direction = {
+        x: target.x - camera.position.x,
+        y: target.y - camera.position.y,
+        z: target.z - camera.position.z
+      }
+      
+      // Normaliser la direction pour une visualisation précise
+      const dirLength = Math.sqrt(
+        direction.x * direction.x +
+        direction.y * direction.y +
+        direction.z * direction.z
+      )
+      
+      if (dirLength > 0) {
+        direction.x /= dirLength
+        direction.y /= dirLength
+        direction.z /= dirLength
+      }
+  
+      // Préparer l'objet viewpoint
+      const viewpoint = {
+        guid: `viewpoint-${Date.now()}`,
+        camera_view_point: {
+          x: camera.position.x,
+          y: camera.position.y,
+          z: camera.position.z,
+        },
+        camera_direction: {
+          x: direction.x,
+          y: direction.y,
+          z: direction.z,
+        },
+        camera_up_vector: {
+          x: camera.up.x,
+          y: camera.up.y,
+          z: camera.up.z,
+        },
+        field_of_view: fieldOfView,
+        project: projectId,
+        createdBy: currentUser.id,
+        createdAt: new Date()
+      }
+  
+      // Capturer une image de la vue actuelle
+      const renderer = viewerRef.current.context.getRenderer()
+      renderer.render(viewerRef.current.context.getScene(), camera)
+      const screenshot = renderer.domElement.toDataURL()
+  
+      // Créer directement le todo avec l'objet viewpoint intégré
+      const todoData = {
+        title: newTodo.title,
+        description: newTodo.description,
+        status: "open",
+        priority: newTodo.priority,
+        createdBy: currentUser?.name || currentUser?.email || "Unknown User",
+        userId: currentUser.id,
+        project: projectId,
+        createdAt: new Date(),
+        viewpoint: viewpoint,
+        screenshot: screenshot
+      }
+  
+      console.log("Todo à envoyer:", todoData)
+  
+      const response = await fetch("/api/todos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(todoData),
+      })
+  
+      // Vérifier le type de contenu avant de parser en JSON
+      const contentType = response.headers.get("content-type")
+      
+      if (!response.ok) {
+        let errorMessage = `Error: ${response.status}`
+        try {
+          if (contentType && contentType.includes("application/json")) {
+            const errorData = await response.json()
+            errorMessage += ` - ${errorData.error || "Unknown error"}`
+          } else {
+            const errorText = await response.text()
+            console.error("Réponse non-JSON reçue:", errorText.substring(0, 200))
+            errorMessage += " - Non-JSON response received"
+          }
+        } catch (e) {
+          console.error("Erreur lors de la lecture de la réponse:", e)
+        }
+        throw new Error(errorMessage)
+      }
+  
+      // S'assurer que la réponse est JSON avant de la parser
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("La réponse du serveur n'est pas au format JSON")
+      }
+  
+      const savedTodo = await response.json()
+      console.log("Todo sauvegardé avec succès:", savedTodo)
+  
+      setTodos((prev) => [...prev, savedTodo])
+      setIsCreatingTodo(false)
+      setNewTodo({ title: "", description: "", priority: "medium" })
+  
+      toast.success("Todo created successfully")
+    } catch (error) {
+      console.error("Failed to save todo", error)
+      toast.error(`Failed to save todo: ${error.message}`)
+    }
+  }
+  
+  const restoreTodoView = (todo: Todo) => {
+    if (!viewerRef.current) {
+      console.error("Viewer reference not available");
+      return;
+    }
+    
+    const controls = viewerRef.current.context?.ifcCamera?.cameraControls;
+    
+    if (!controls) {
+      console.error("Contrôles de la caméra non initialisés");
+      return;
+    }
+    
+    // Récupérer les données du viewpoint
+    let viewpointData = todo.viewpoint;
+    
+    // Gérer les structures potentiellement imbriquées de MongoDB
+    if (viewpointData && typeof viewpointData === 'object' && '_doc' in viewpointData) {
+      viewpointData = viewpointData._doc;
+    }
+    
+    if (!viewpointData || typeof viewpointData !== 'object') {
+      console.error("Données de viewpoint manquantes");
+      return;
+    }
+    
+    // Extraire les données nécessaires selon le format
+    let position, direction, up, fieldOfView;
+    
+    if ('camera_view_point' in viewpointData && 'camera_direction' in viewpointData) {
+      position = viewpointData.camera_view_point;
+      direction = viewpointData.camera_direction;
+      up = viewpointData.camera_up_vector;
+      fieldOfView = viewpointData.field_of_view || 45;
+    } 
+    else if ('position' in viewpointData && 'target' in viewpointData) {
+      position = viewpointData.position;
+      direction = {
+        x: viewpointData.target.x - viewpointData.position.x,
+        y: viewpointData.target.y - viewpointData.position.y,
+        z: viewpointData.target.z - viewpointData.position.z
+      };
+      up = viewpointData.up || { x: 0, y: 1, z: 0 };
+      fieldOfView = viewpointData.fieldOfView || 45;
+    }
+    else {
+      console.error("Format de viewpoint non reconnu:", viewpointData);
+      return;
+    }
+    
+    // Validation des données
+    if (
+      !position || !direction || !up ||
+      typeof position.x !== 'number' ||
+      typeof direction.x !== 'number' ||
+      typeof up.x !== 'number'
+    ) {
+      console.error("Données de viewpoint invalides:", viewpointData);
+      return;
+    }
+    
+    // Calculer le point cible
+    const target = {
+      x: position.x + direction.x,
+      y: position.y + direction.y,
+      z: position.z + direction.z
+    };
+    
+    // Récupérer la caméra
+    const camera = viewerRef.current.context.getCamera();
+    
+    // Appliquer le vecteur "up" avant l'animation pour une orientation correcte
+    if (camera) {
+      camera.up.set(up.x, up.y, up.z);
+    }
+    
+    // Définir le champ de vision si présent
+    if (typeof fieldOfView === 'number' && camera) {
+      camera.fov = fieldOfView;
+      camera.updateProjectionMatrix();
+    }
+    
+    // Paramètres d'animation pour une transition plus fluide (comme Trimble)
+    const animationDuration = 1.2; // durée en secondes
+    const enableDamping = true;    // activer l'amortissement pour une animation plus naturelle
+    const dampingFactor = 0.05;    // facteur d'amortissement (plus petit = plus fluide)
+    
+    // Animation fluide de la caméra vers la nouvelle position
+    controls.setLookAt(
+      position.x,
+      position.y,
+      position.z,
+      target.x,
+      target.y,
+      target.z,
+      true, // animation activée
+      animationDuration
+    );
+    
+    // Configurer l'amortissement si disponible
+    if (controls.dampingFactor !== undefined) {
+      const originalDamping = controls.dampingFactor;
+      controls.dampingFactor = dampingFactor;
+      controls.enableDamping = enableDamping;
+      
+      // Restaurer les valeurs originales après l'animation
+      setTimeout(() => {
+        if (controls.dampingFactor !== undefined) {
+          controls.dampingFactor = originalDamping;
+        }
+      }, animationDuration * 1000 + 100);
+    }
+    
+    // Mettre à jour les contrôles
+    controls.update(true);
+    
+    // Feedback utilisateur
+    toast.success(`Vue restaurée: ${todo.title}`, {
+      duration: 2000,
+      position: "bottom-right"
+    });
+  }
+
+  // Mise à jour de handleTodoSelect pour utiliser la nouvelle fonction restoreTodoView
+  const handleTodoSelect = (todo: Todo) => {
+    restoreTodoView(todo);
+  }
+  const handleTodoStatusChange = async (todoId, newStatus) => {
+    try {
+      const response = await fetch('/api/todos', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: todoId,
+          status: newStatus
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+
+      const updatedTodo = await response.json();
+
+      // Mettre à jour l'état local
+      setTodos(prev =>
+        prev.map(todo => todo.id === todoId ? updatedTodo : todo)
+      );
+    } catch (error) {
+      console.error("Failed to update todo status", error);
+    }
+  };
+
+
+  const handleTodoAssign = async (todoId: string, userId: string) => {
+    try {
+      const response = await fetch('/api/todos', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: todoId,
+          assignedTo: userId
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`)
+      }
+
+      const updatedTodo = await response.json()
+
+      // Mettre à jour l'état local
+      setTodos(prev =>
+        prev.map(todo => (todo._id === todoId || todo.id === todoId) ? updatedTodo : todo)
+      )
+    } catch (error) {
+      console.error("Failed to assign todo", error)
+    }
+  }
+
+  const handleTodoDelete = async (todoId: string) => {
+    if (!todoId) {
+      toast.error("ID manquant pour la suppression")
+      return
+    }
+
+    // Récupération du projectId depuis l'URL
+    const urlParams = new URLSearchParams(window.location.search)
+    const projectId = urlParams.get('projectId')
+
+    const originalTodos = todos
+
+    // 1. Suppression optimiste
+    setTodos(prev => prev.filter(t => t._id !== todoId && t.id !== todoId))
+
+    try {
+      // 2. Suppression réelle
+      const response = await fetch(`/api/todos?id=${encodeURIComponent(todoId)}`, {
+        method: "DELETE"
+      })
+
+      if (!response.ok) throw new Error("Échec de la suppression")
+
+      // 3. Rechargement des todos du projet
+      if (projectId) {
+        const freshData = await fetch(`/api/todos?projectId=${projectId}`)
+          .then(res => res.json())
+        setTodos(freshData)
+      }
+
+      toast.success("Supprimé avec succès !")
+    } catch (error) {
+      // Rollback
+      setTodos(originalTodos)
+      toast.error("Échec de la suppression")
+    }
+  }
+
+  // Fonction pour basculer l'affichage du panneau de todos
+  const toggleTodosTool = () => {
+    if (activeTool === 'todos') {
+      setActiveTool(null)
+    } else {
+      setActiveTool('todos')
+    }
+  }
+
+  // Fonction pour ouvrir la modal de création de todo
+  const handleCreateNote = () => {
+    setIsCreatingTodo(true)
+  }
+
+  // Exposer les fonctions et données nécessaires en tant qu'API globale
+  useEffect(() => {
+    if (window && typeof window !== 'undefined') {
+      window.todoManager = {
+        createTodo: () => setIsCreatingTodo(true),
+        toggleTodoPanel: toggleTodosTool,
+        restoreView: restoreTodoView,
+        getTodos: () => todos,
+        getActiveTool: () => activeTool
+      };
+    }
+    
+    return () => {
+      if (window && typeof window !== 'undefined') {
+        delete window.todoManager;
+      }
+    };
+  }, [todos, activeTool]);
+
+  return (
+    <>
+      {/* Panneau des Todos */}
+      <TodoPanel 
+        todos={todos} 
+        onTodoSelect={handleTodoSelect} 
+        onTodoDelete={handleTodoDelete}
+        onTodoStatusChange={handleTodoStatusChange}
+        onTodoAssign={handleTodoAssign}
+        activeTool={activeTool}
+        onCreateNote={handleCreateNote}
+      />
+
+      {/* Modal de création de Todo */}
+      <TodoCreationModal
+        isOpen={isCreatingTodo}
+        onClose={() => setIsCreatingTodo(false)}
+        newTodo={newTodo}
+        setNewTodo={setNewTodo}
+        onCreateTodo={createTodo}
+      />
+    </>
+  )
+}
+
+// Fonctions exportées pour être utilisées par les boutons externes
+export const openTodoCreation = () => {
+  if (window && window.todoManager) {
+    window.todoManager.createTodo();
+  }
+};
+
+export const toggleTodoPanel = () => {
+  if (window && window.todoManager) {
+    window.todoManager.toggleTodoPanel();
+  }
+};
+
+export const restoreTodoView = (todo: Todo) => {
+  if (window && window.todoManager) {
+    window.todoManager.restoreView(todo);
+  }
+};
+
+export const getTodosCount = () => {
+  if (window && window.todoManager) {
+    const todos = window.todoManager.getTodos();
+    return todos ? todos.length : 0;
+  }
+  return 0;
+};
+
+export const isActiveTool = () => {
+  if (window && window.todoManager) {
+    return window.todoManager.getActiveTool() === 'todos';
+  }
+  return false;
+};
