@@ -15,8 +15,8 @@ export interface Todo {
   id?: string
   title: string
   description?: string
-  status: "open" | "in-progress" | "resolved" | "closed"
-  priority: "low" | "medium" | "high"
+  status: "new" | "in-progress" | "waiting" | "done" | "closed" 
+  priority: "low" | "normal" | "high" | "critical"
   createdBy: string
   userId?: string
   assignedTo?: string
@@ -48,6 +48,7 @@ function TodoPanel({
   onTodoAssign,
   activeTool,
   onCreateNote,
+  projectMembers,
 }: {
   todos: Todo[]
   onTodoSelect: (todo: Todo) => void
@@ -56,6 +57,7 @@ function TodoPanel({
   onTodoAssign: (id: string, userId: string) => void
   activeTool: string | null
   onCreateNote: () => void
+  projectMembers: any[] 
 }) {
   if (activeTool !== "todos") return null
 
@@ -113,11 +115,18 @@ function TodoPanel({
                     <SelectValue placeholder="Assign to..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="user1">John Doe</SelectItem>
-                      <SelectItem value="user2">Jane Smith</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
+  <SelectGroup>
+    {projectMembers && projectMembers.length > 0 ? (
+      projectMembers.map(member => (
+        <SelectItem key={member.id || member._id} value={member.id || member._id}>
+          {member.name || member.email || "Unnamed user"}
+        </SelectItem>
+      ))
+    ) : (
+      <SelectItem value="none">Aucun membre disponible</SelectItem>
+    )}
+  </SelectGroup>
+</SelectContent>
                 </Select>
               </div>
 
@@ -131,22 +140,16 @@ function TodoPanel({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="open">Open</SelectItem>
-                      <SelectItem value="in-progress">In Progress</SelectItem>
-                      <SelectItem value="resolved">Resolved</SelectItem>
+                    <SelectItem value="new">New</SelectItem>
+      <SelectItem value="in-progress">In Progress</SelectItem>
+      <SelectItem value="waiting">Waiting</SelectItem>
+      <SelectItem value="done">Done</SelectItem>
+      <SelectItem value="closed">Closed</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onTodoDelete(todo._id || todo.id || "")
-                  }}
-                  className="text-red-500 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+             
                 <button
                   onClick={(e) => {
                     e.stopPropagation() // Empêche le déclenchement du onClick du parent
@@ -160,6 +163,15 @@ function TodoPanel({
                     <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path>
                     <circle cx="12" cy="13" r="3"></circle>
                   </svg>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onTodoDelete(todo._id || todo.id || "")
+                  }}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -187,13 +199,13 @@ function TodoCreationModal({
   newTodo: {
     title: string
     description: string
-    priority: "low" | "medium" | "high"
+    priority: "low" | "normal" | "high" | "critical"
   }
   setNewTodo: React.Dispatch<
     React.SetStateAction<{
       title: string
       description: string
-      priority: "low" | "medium" | "high"
+      priority: "low" | "normal" | "high" | "critical"
     }>
   >
   onCreateTodo: () => void
@@ -238,7 +250,7 @@ function TodoCreationModal({
               <Label htmlFor="priority">Priority</Label>
               <Select
                 value={newTodo.priority}
-                onValueChange={(value: "low" | "medium" | "high") =>
+                onValueChange={(value: "low" | "normal" | "high" | "critical") =>
                   setNewTodo((prev) => ({ ...prev, priority: value }))
                 }
               >
@@ -246,9 +258,10 @@ function TodoCreationModal({
                   <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
                   <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -278,11 +291,12 @@ interface TodoManagerProps {
 export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
   const [todos, setTodos] = useState<Todo[]>([])
   const [isCreatingTodo, setIsCreatingTodo] = useState(false)
+  const [projectMembers, setProjectMembers] = useState([]);
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const [newTodo, setNewTodo] = useState({
     title: '',
     description: '',
-    priority: 'medium' as const,
+    priority: 'normal' as const,
   })
 
   useEffect(() => {
@@ -312,7 +326,51 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
 
     fetchTodos()
   }, [])
-
+  useEffect(() => {
+    const fetchTodos = async () => {
+      try {
+        // Code existant pour récupérer les todos...
+      } catch (error) {
+        console.error("Failed to fetch todos", error)
+      }
+    }
+  
+    const fetchProjectMembers = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search)
+        const projectId = urlParams.get('projectId')
+    
+        if (!projectId) {
+          console.error("Project ID is missing")
+          return
+        }
+    
+        console.log("Fetching members for project:", projectId);
+        const response = await fetch(`/api/projects/${projectId}/members`)
+    
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`)
+        }
+    
+        const data = await response.json()
+        console.log("Project members received:", data); // Ajoutez ce log pour voir le format des données
+        
+        // Si les données ont une structure différente, ajustez la manière dont vous les stockez
+        if (Array.isArray(data)) {
+          setProjectMembers(data)
+        } else if (data.members && Array.isArray(data.members)) {
+          setProjectMembers(data.members)
+        } else {
+          console.error("Unexpected data format for members:", data)
+        }
+      } catch (error) {
+        console.error("Failed to fetch project members", error)
+      }
+    }
+  
+    fetchTodos()
+    fetchProjectMembers()
+  }, [])
   const createTodo = async () => {
     if (!viewerRef.current || !newTodo.title) return
   
@@ -397,7 +455,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
       const todoData = {
         title: newTodo.title,
         description: newTodo.description,
-        status: "open",
+        status: "new",
         priority: newTodo.priority,
         createdBy: currentUser?.name || currentUser?.email || "Unknown User",
         userId: currentUser.id,
@@ -447,7 +505,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
   
       setTodos((prev) => [...prev, savedTodo])
       setIsCreatingTodo(false)
-      setNewTodo({ title: "", description: "", priority: "medium" })
+      setNewTodo({ title: "", description: "", priority: "normal" })
   
       toast.success("Todo created successfully")
     } catch (error) {
@@ -595,48 +653,75 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
           status: newStatus
         }),
       });
-
+  
       if (!response.ok) {
         throw new Error(`Error: ${response.status}`);
       }
-
+  
       const updatedTodo = await response.json();
-
+  
       // Mettre à jour l'état local
       setTodos(prev =>
-        prev.map(todo => todo.id === todoId ? updatedTodo : todo)
+        prev.map(todo => (todo._id === todoId || todo.id === todoId) ? updatedTodo : todo)
       );
+      
+      toast.success(`Status changed to ${newStatus}`);
     } catch (error) {
       console.error("Failed to update todo status", error);
+      toast.error(`Failed to update status: ${error.message}`);
     }
   };
 
-
   const handleTodoAssign = async (todoId: string, userId: string) => {
     try {
-      const response = await fetch('/api/todos', {
+      console.log(`Assigning todo ${todoId} to user ${userId}`);
+      
+      // Chercher d'abord le todo dans la liste pour vérifier son ID
+      const todoToUpdate = todos.find(t => t._id === todoId || t.id === todoId);
+      if (!todoToUpdate) {
+        console.error("Todo not found in local state:", todoId);
+        return;
+      }
+      
+      // Utiliser l'ID approprié (MongoDB utilise généralement _id)
+      const actualId = todoToUpdate._id || todoToUpdate.id;
+      console.log("Using actual todo ID:", actualId);
+      
+      const apiUrl = '/api/todos';
+      const body = {
+        id: actualId,
+        assignedTo: userId
+      };
+      
+      console.log("Request URL:", apiUrl);
+      console.log("Request body:", body);
+      
+      const response = await fetch(apiUrl, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          id: todoId,
-          assignedTo: userId
-        }),
-      })
-
+        body: JSON.stringify(body),
+      });
+  
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`)
+        const errorText = await response.text();
+        console.error("API Error response:", errorText);
+        throw new Error(`Error: ${response.status}`);
       }
-
-      const updatedTodo = await response.json()
-
+  
+      const updatedTodo = await response.json();
+      console.log("Todo updated successfully:", updatedTodo);
+  
       // Mettre à jour l'état local
       setTodos(prev =>
-        prev.map(todo => (todo._id === todoId || todo.id === todoId) ? updatedTodo : todo)
-      )
+        prev.map(todo => (todo._id === actualId || todo.id === actualId) ? updatedTodo : todo)
+      );
+      
+      toast.success("Assigné avec succès");
     } catch (error) {
-      console.error("Failed to assign todo", error)
+      console.error("Failed to assign todo", error);
+      toast.error(`Échec de l'assignation: ${error.message}`);
     }
   }
 
@@ -732,27 +817,28 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
       // Si les vecteurs ne sont pas perpendiculaires
       if (Math.abs(dotProduct) > 0.0001) {
         // Utiliser un produit vectoriel pour créer un vecteur perpendiculaire
-        // Calculons un vecteur perpendiculaire à direction en utilisant un vecteur auxiliaire
-        let auxVector = { x: 0, y: 1, z: 0 }; // Utiliser (0,1,0) comme vecteur auxiliaire
+        // Calculer le produit vectoriel entre direction et (0,1,0)
+        const auxVector = { x: 0, y: 1, z: 0 };
         
-        // Si direction est proche de (0,1,0), utiliser (1,0,0) comme vecteur auxiliaire
+        // Si direction est trop proche de auxVector, utiliser un autre vecteur auxiliaire
         if (Math.abs(camera.direction.y) > 0.9) {
-          auxVector = { x: 1, y: 0, z: 0 };
+          auxVector.x = 1;
+          auxVector.y = 0;
         }
         
-        // Calculer le produit vectoriel pour obtenir un vecteur perpendiculaire à direction
+        // Calculer le produit vectoriel
         const crossX = camera.direction.y * auxVector.z - camera.direction.z * auxVector.y;
         const crossY = camera.direction.z * auxVector.x - camera.direction.x * auxVector.z;
         const crossZ = camera.direction.x * auxVector.y - camera.direction.y * auxVector.x;
         
-        // Normaliser le résultat pour obtenir un vecteur up perpendiculaire unitaire
+        // Normaliser le résultat
         const crossLength = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
         
         if (crossLength > 0) {
           camera.up.x = crossX / crossLength;
           camera.up.y = crossY / crossLength;
           camera.up.z = crossZ / crossLength;
-        } else {a
+        } else {
           // Fallback si le produit vectoriel est nul
           camera.up = { x: 0, y: 1, z: 0 };
           if (Math.abs(camera.direction.y) > 0.9) {
@@ -768,8 +854,9 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
     function mapPriority(priority) {
       switch (priority) {
         case "low": return "Low";
-        case "medium": return "Medium";
+        case "normal": return "Normal";
         case "high": return "High";
+        case "critical": return "Critical";
         default: return "Medium";
       }
     }
@@ -781,21 +868,6 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
         const v = c === "x" ? r : (r & 0x3) | 0x8;
         return v.toString(16).toUpperCase();
       });
-    }
-  
-    // Fonction de conversion pour ajuster les coordonnées au format BIMTrack/Revit
-    function convertCoordinates(point) {
-      // Facteur de conversion basé sur les exemples fournis
-      // Environ 92.9 (3219.86 / 34.658278583894344)
-      const conversionFactor = 92.9;
-      
-      // Conversion et inversion d'axes si nécessaire pour Revit/BIMTrack
-      return {
-        // Inversion axes y et z pour correspondre à la convention de Revit
-        x: point.x * conversionFactor,
-        y: point.z * conversionFactor, // z devient y
-        z: point.y * conversionFactor  // y devient z
-      };
     }
   
     // Pour chaque todo, créer un dossier avec un GUID standard
@@ -844,7 +916,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
   </Markup>`
       );
   
-      // Extraire les données de caméra du viewpoint
+      // Extraire et transformer les données de caméra du viewpoint pour Revit/BIMTrack
       let camera = {
         position: { x: 0, y: 0, z: 0 },
         direction: { x: 0, y: 0, z: -1 },
@@ -852,44 +924,81 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
       };
   
       if (todo.viewpoint) {
-        // Utiliser les données du viewpoint avec conversion pour BIMTrack/Revit
-        const convertedPosition = convertCoordinates({
-          x: todo.viewpoint.camera_view_point.x,
-          y: todo.viewpoint.camera_view_point.y,
-          z: todo.viewpoint.camera_view_point.z
-        });
-  
-     
-        camera = {
-          position: {
-            x: -todo.viewpoint.camera_view_point.x,
-            y: -todo.viewpoint.camera_view_point.z,
-            z: todo.viewpoint.camera_view_point.y
-          },
-          direction: {
-            x: -todo.viewpoint.camera_direction.x,
-            y: -todo.viewpoint.camera_direction.z,
-            z: todo.viewpoint.camera_direction.y
-          },
-          up: {
-            x: -todo.viewpoint.camera_up_vector.x,
-            y: -todo.viewpoint.camera_up_vector.z,
-            z: todo.viewpoint.camera_up_vector.y
+        // Nouvelle structure avec camera_view_point, camera_direction et camera_up_vector
+        if (todo.viewpoint.camera_view_point && todo.viewpoint.camera_direction && todo.viewpoint.camera_up_vector) {
+          // Transform coordinates - adapté pour les nouvelles propriétés
+          const transformCoord = (p) => ({
+            x: p.x,       // X inchangé
+            y: -p.z,      // Y prend -Z (inversion de la hauteur)
+            z: p.y        // Z prend Y (verticale)
+          });
+          
+          const viewPoint = transformCoord(todo.viewpoint.camera_view_point);
+          
+          // Calculate target point by adding direction vector to view point
+          // (Le point cible se trouve à une distance de 1 unité dans la direction indiquée)
+          const targetPoint = {
+            x: todo.viewpoint.camera_view_point.x + todo.viewpoint.camera_direction.x,
+            y: todo.viewpoint.camera_view_point.y + todo.viewpoint.camera_direction.y,
+            z: todo.viewpoint.camera_view_point.z + todo.viewpoint.camera_direction.z
+          };
+          
+          const target = transformCoord(targetPoint);
+          const upVector = transformCoord(todo.viewpoint.camera_up_vector);
+          
+          camera = {
+            position: viewPoint,
+            target: target,
+            up: upVector
+          };
+          
+          // Calculate forward direction
+          const forward = {
+            x: camera.target.x - camera.position.x,
+            y: camera.target.y - camera.position.y,
+            z: camera.target.z - camera.position.z
+          };
+          
+          // Normalize forward
+          const forwardLength = Math.sqrt(forward.x ** 2 + forward.y ** 2 + forward.z ** 2);
+          if (forwardLength > 0) {
+            forward.x /= forwardLength;
+            forward.y /= forwardLength;
+            forward.z /= forwardLength;
           }
-        };
+          
+          // Assigner le forward normalisé comme direction
+          camera.direction = forward;
+          
+          // Ensure up is orthogonal to forward
+          const dot = forward.x * camera.up.x + forward.y * camera.up.y + forward.z * camera.up.z;
+          const correctedUp = {
+            x: camera.up.x - forward.x * dot,
+            y: camera.up.y - forward.y * dot,
+            z: camera.up.z - forward.z * dot
+          };
+          
+          // Normalize corrected up
+          const upLength = Math.sqrt(correctedUp.x ** 2 + correctedUp.y ** 2 + correctedUp.z ** 2);
+          if (upLength > 0) {
+            camera.up = {
+              x: correctedUp.x / upLength,
+              y: correctedUp.y / upLength,
+              z: correctedUp.z / upLength
+            };
+          }
+          
         
-        
-  
-        // S'assurer que les vecteurs sont perpendiculaires
-        camera = ensureVectorsPerpendicular(camera);
+        }
       } else {
         console.log("Viewpoint manquant, utilisation de valeurs par défaut");
-        // Valeurs par défaut garanties perpendiculaires avec échelle BIMTrack
+        // Valeurs par défaut basées sur les échelles observées
         camera = {
-          position: { x: 10 * 92.9, y: 10 * 92.9, z: 10 * 92.9 },
-          direction: { x: 0, y: 0, z: -1 },
+          position: { x: -37000, y: 36000, z: 24000 },
+          direction: { x: -0.5, y: -0.5, z: -0.5 },
           up: { x: 0, y: 1, z: 0 }
         };
+        camera = ensureVectorsPerpendicular(camera);
       }
   
       // Fichier viewpoint.bcfv - contient les informations de caméra
@@ -914,7 +1023,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
         <Y>${camera.up.y.toFixed(6)}</Y>
         <Z>${camera.up.z.toFixed(6)}</Z>
       </CameraUpVector>
-      <FieldOfView>${todo.viewpoint?.field_of_view || 20.0}</FieldOfView>
+      <FieldOfView>${todo.viewpoint?.field_of_view || 45.0}</FieldOfView>
     </PerspectiveCamera>
     <Components>
       <ViewSetupHints SpacesVisible="false" SpaceBoundariesVisible="false" OpeningsVisible="false"/>
@@ -1021,6 +1130,7 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
         onTodoAssign={handleTodoAssign}
         activeTool={activeTool}
         onCreateNote={handleCreateNote}
+        projectMembers={projectMembers}
       />
 
       {/* Modal de création de Todo */}

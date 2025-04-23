@@ -3,8 +3,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ITodo extends Document {
   title: string;
   description?: string;
-  status: 'open' | 'in-progress' | 'resolved' | 'closed';
-  priority: 'low' | 'medium' | 'high';
+  status: "open" | "in-progress" | "resolved" | "closed" | "new" | "waiting" | "done"
+  priority: 'low' | 'normal' | 'high' | 'critical';
   createdBy: string;
   userId?: string;
   assignedTo?: string;
@@ -27,13 +27,14 @@ const TodoSchema: Schema = new Schema({
   },
   status: {
     type: String,
-    enum: ['open', 'in-progress', 'resolved', 'closed'],
-    default: 'open'
+    enum: ['new', 'open', 'in-progress', 'waiting', 'done', 'resolved', 'closed'],
+    default: 'new'
   },
   priority: {
     type: String,
-    enum: ['low', 'medium', 'high'],
-    default: 'medium'
+    enum: ['low', 'normal', 'high', 'critical'], 
+    default: 'normal'
+
   },
   createdBy: {
     type: String,

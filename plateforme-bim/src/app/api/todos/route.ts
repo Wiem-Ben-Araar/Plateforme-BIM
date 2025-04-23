@@ -156,9 +156,9 @@ export async function PUT(request: Request) {
     }
     
     const updatedTodo = await Todo.findOneAndUpdate(
-      { id }, // Recherchez par id personnalisé
+      { _id: id }, // Changed from { id } to { _id: id }
       updateData,
-      { new: true } // Pour retourner le document mis à jour
+      { new: true }
     ).populate('viewpoint');
     
     if (!updatedTodo) {
