@@ -17,7 +17,8 @@ interface ProjectFile {
   file_size?: number;
   file_url: string;
   firebasePath?: string;
-  uploadedBy?: string; 
+  uploadedBy?: string;
+  uploadedByEmail?: string;
 }
 
 interface ProjectFilesProps {
@@ -30,7 +31,7 @@ export default function ProjectFiles({ projectId, files = [], userRole }: Projec
   const [loading, setLoading] = useState(false);
   const { data: session } = useSession();
   const currentUserEmail = session?.user?.email;
-  const currentUserId = session?.user?.id; // Récupérer l'ID utilisateur depuis la session
+  const currentUserId = session?.user?.id;
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const router = useRouter();
@@ -93,75 +94,101 @@ export default function ProjectFiles({ projectId, files = [], userRole }: Projec
     }
   };
 
-  // Suppression de fichier
-// In your ProjectFiles component
-const handleDelete = async (fileId: string) => {
-  if (!confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) return;
-
-  setLoading(true);
-  try {
-    // Find the file to delete
-    const fileToDelete = projectFiles.find(file => file.id === fileId);
+  // FONCTION AMÉLIORÉE: Vérifier si l'utilisateur peut supprimer un fichier
+  const canDeleteFile = (file: ProjectFile) => {
+    // Les propriétaires peuvent toujours supprimer
+    if (userRole === "owner") return true;
     
-    if (!fileToDelete) {
-      throw new Error("Fichier non trouvé");
+    // Pour les fichiers temporaires, comparer avec l'email actuel
+    if (file.id.startsWith('temp-')) {
+      // Si uploadedBy est un email, comparer avec l'email actuel
+      if (typeof file.uploadedBy === 'string' && file.uploadedBy.includes('@')) {
+        return file.uploadedBy === currentUserEmail;
+      }
     }
     
-    // Check if this is a MongoDB ID or a temporary ID
-    const isMongoId = !fileId.startsWith('temp-');
-    
-    const response = await fetch("/api/upload", {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ 
-        fileId, 
-        projectId,
-        firebasePath: fileToDelete.firebasePath,
-        // Send user info
-        userEmail: currentUserEmail,
-        userId: currentUserId,
-        isTemporary: !isMongoId
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Erreur lors de la suppression");
+    // Vérifier si l'utilisateur actuel est celui qui a uploadé le fichier
+    // Priorité à l'email pour la vérification (plus fiable)
+    if (currentUserEmail && file.uploadedByEmail) {
+      return file.uploadedByEmail === currentUserEmail;
     }
     
-    const data = await response.json();
-    
-    // Update local state
-    const updatedFiles = projectFiles.filter((file) => file.id !== fileId);
-    setProjectFiles(updatedFiles);
-
-    // Update localStorage
-    localStorage.setItem(
-      `project_files_${projectId}`,
-      JSON.stringify(updatedFiles)
-    );
-
-    // Update viewAllUrl
-    updateViewAllUrl();
-
-    // Refresh the page only if it was a real MongoDB file
-    if (isMongoId) {
-      router.refresh();
-      // Also refresh the file list from server
-      await fetchFiles();
+    // Sinon, vérifier l'ID si disponible
+    if (currentUserId && file.uploadedBy) {
+      return file.uploadedBy === currentUserId;
     }
-
-    alert("Fichier supprimé avec succès");
     
-  } catch (error) {
-    console.error("Erreur lors de la suppression du fichier:", error);
-    alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : "Une erreur inconnue s'est produite"}`);
-  } finally {
-    setLoading(false);
-  }
-};
+    return false;
+  };
+
+  // Suppression de fichier avec l'email de l'utilisateur
+  const handleDelete = async (fileId: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) return;
+
+    setLoading(true);
+    try {
+      // Find the file to delete
+      const fileToDelete = projectFiles.find(file => file.id === fileId);
+      
+      if (!fileToDelete) {
+        throw new Error("Fichier non trouvé");
+      }
+      
+      // Check if this is a MongoDB ID or a temporary ID
+      const isMongoId = !fileId.startsWith('temp-');
+      
+      const response = await fetch("/api/upload", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          fileId, 
+          projectId,
+          firebasePath: fileToDelete.firebasePath,
+          // Send both user ID and email for permission checking
+          userEmail: currentUserEmail,
+          userId: currentUserId,
+          isTemporary: !isMongoId
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erreur lors de la suppression");
+      }
+      
+      const data = await response.json();
+      
+      // Update local state
+      const updatedFiles = projectFiles.filter((file) => file.id !== fileId);
+      setProjectFiles(updatedFiles);
+
+      // Update localStorage
+      localStorage.setItem(
+        `project_files_${projectId}`,
+        JSON.stringify(updatedFiles)
+      );
+
+      // Update viewAllUrl
+      updateViewAllUrl();
+
+      // Refresh the page only if it was a real MongoDB file
+      if (isMongoId) {
+        router.refresh();
+        // Also refresh the file list from server
+        await fetchFiles();
+      }
+
+      alert("Fichier supprimé avec succès");
+      
+    } catch (error) {
+      console.error("Erreur lors de la suppression du fichier:", error);
+      alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : "Une erreur inconnue s'est produite"}`);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Chargement initial des fichiers
   useEffect(() => {
@@ -196,7 +223,7 @@ const handleDelete = async (fileId: string) => {
     loadFiles();
   }, [projectId, files]);
 
-  // Gestion du téléversement
+  // Gestion du téléversement avec l'email de l'utilisateur
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       setError("Veuillez sélectionner au moins un fichier.");
@@ -221,7 +248,7 @@ const handleDelete = async (fileId: string) => {
   
     formData.append("projectId", projectId);
     
-    // Ajouter l'email et l'ID de l'utilisateur actuel lors de l'upload
+    // Toujours ajouter l'email de l'utilisateur à l'upload
     if (currentUserEmail) {
       formData.append("userEmail", currentUserEmail);
     }
@@ -325,15 +352,6 @@ const handleDelete = async (fileId: string) => {
     return () => clearInterval(interval);
   }, [projectId]); 
   
-  // Vérifier si l'utilisateur peut supprimer un fichier - FIXED FUNCTION
-  const canDeleteFile = (file: ProjectFile) => {
-    // Les propriétaires peuvent toujours supprimer
-    if (userRole === "owner") return true;
-  
-    // Vérifier si l'utilisateur actuel est l'uploader
-    return file.uploadedBy === currentUserId;
-  };
-  
   // Fonction pour tronquer les noms de fichier trop longs
   const truncateFileName = (fileName: string, maxLength: number = 35) => {
     if (fileName.length <= maxLength) return fileName;
@@ -348,17 +366,21 @@ const handleDelete = async (fileId: string) => {
     return `${nameWithoutExt.substring(0, maxLength - 3 - extension.length)}...${extension ? `.${extension}` : ''}`;
   };
   
-  const extractUsername = (identifier?: string) => {
-    if (!identifier) return "Unknown";
+  const extractUsername = (email?: string) => {
+    if (!email) return "Unknown";
     
-    // Si c'est un ID MongoDB
-    if (/^[0-9a-f]{24}$/.test(identifier)) {
-      return `User ${identifier.slice(0, 5)}...`;
+    // Si c'est un email, extraire la partie avant @
+    if (email.includes('@')) {
+      return email.split('@')[0];
     }
     
-    return identifier;
+    // Si c'est un ID MongoDB (ou autre ID)
+    if (/^[0-9a-f]{24}$/.test(email)) {
+      return `User ${email.slice(0, 5)}...`;
+    }
+    
+    return email;
   };
-  
   
   return (
     <div className="space-y-4">
@@ -483,13 +505,15 @@ const handleDelete = async (fileId: string) => {
             // Tronquer le nom du fichier pour l'affichage
             const displayName = truncateFileName(file.name);
             
-            // Extraire le nom d'utilisateur depuis l'email ou l'ID
-            const username = file.uploadedBy ? extractUsername(file.uploadedBy) : "Unknown";
+            // Extraire le nom d'utilisateur depuis l'email
+            const username = file.uploadedByEmail ? extractUsername(file.uploadedByEmail) : 
+                            (file.uploadedBy ? extractUsername(file.uploadedBy) : "Unknown");
             
             // Pour déboguer
             console.log(`File ${file.name}:
             - Can delete: ${canDelete}
             - uploadedBy: ${file.uploadedBy}
+            - uploadedByEmail: ${file.uploadedByEmail}
             - currentUserId: ${currentUserId}
             - currentUserEmail: ${currentUserEmail}
             - userRole: ${userRole}`);
@@ -506,17 +530,16 @@ const handleDelete = async (fileId: string) => {
                       <div className="text-sm text-gray-500">
                         Version {file.version} • {formatFileSize(file.file_size || 0)}
                       </div>
-                    
-                      {file.uploadedBy && (
-  <div className="text-sm text-gray-500">
-    Created by{' '}
-    <span className="font-medium">
-      {file.uploadedByEmail 
-        ? file.uploadedByEmail.split('@')[0] // Afficher le nom avant @
-        : `User ${file.uploadedBy.substring(0, 5)}...`}
-    </span>
-  </div>
-)}
+                      
+                      {/* Afficher l'utilisateur qui a téléversé le fichier */}
+                      {(file.uploadedByEmail || file.uploadedBy) && (
+                        <div className="text-sm text-gray-500">
+                          Created by{' '}
+                          <span className="font-medium">
+                            {username}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -534,7 +557,7 @@ const handleDelete = async (fileId: string) => {
                     {validUrl ? "Download" : "Download Unavailable"}
                   </Button>
                   
-                  {/* Afficher le bouton de suppression si l'utilisateur peut supprimer */}
+                  {/* Afficher le bouton de suppression SEULEMENT si l'utilisateur peut supprimer */}
                   {canDelete && (
                     <Button
                       onClick={() => handleDelete(file.id)}
