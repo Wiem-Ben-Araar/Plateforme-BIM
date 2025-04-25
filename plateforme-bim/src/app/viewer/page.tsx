@@ -177,7 +177,15 @@ const logAvailableTypesInModel = async (modelID) => {
     toggleTodoPanel();
   };
   
-
+  const toggleTool = (tool: string) => {
+    if (activeTool === tool) {
+      // Si l'outil cliqué est déjà actif, le désactiver
+      setActiveTool(null);
+    } else {
+      // Sinon, activer cet outil (désactivant tout autre outil)
+      setActiveTool(tool);
+    }
+  };    
 // Fonction principale de détection de clash entre types spécifiques avec tolérance
 const detectClashesBetweenTypes = async (typeId1, typeId2, tolerance = 0) => {
   if (!viewerRef.current || isClashDetectionRunning) return;

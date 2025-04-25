@@ -1,4 +1,3 @@
-// file.ts (modifié)
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IFile extends Document {
@@ -8,6 +7,7 @@ export interface IFile extends Document {
   fileType: 'IFC' | 'BCF' | 'PDF' | 'other';
   version: number;
   project: mongoose.Types.ObjectId;
+  firebasePath?: string; // Add this to match your upload logic
   ifcMetadata?: {
     schema: string;
     application: string;
@@ -20,7 +20,8 @@ export interface IFile extends Document {
     }
   };
   uploadedAt: Date;
-  uploadedBy: mongoose.Types.ObjectId;
+  // Make this field more flexible
+  uploadedBy: mongoose.Types.ObjectId | string;
 }
 
 const FileSchema: Schema = new mongoose.Schema({
@@ -47,6 +48,8 @@ const FileSchema: Schema = new mongoose.Schema({
     ref: 'Project',
     required: true
   },
+  // Add this to match your upload logic
+  firebasePath: String,
   ifcMetadata: {
     schema: String,
     application: String,
@@ -62,11 +65,12 @@ const FileSchema: Schema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  // Make this field accept both ObjectId and String
   uploadedBy: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.Mixed,
     ref: 'User'
   }
 });
 
-// Enregistrement conditionnel
+// Conditional registration
 export default mongoose.models.File || mongoose.model<IFile>('File', FileSchema);

@@ -48,7 +48,13 @@ const handler = NextAuth({
           if (!isValidPassword) {
             throw new Error("Invalid credentials");
           }
-        
+          return {
+            id: user._id.toString(),
+            email: user.email,
+            name: user.name,
+            role: user.role || "member", // Récupération du rôle
+            image: user.image,
+          };
         } catch (error) {
           if (error instanceof Error) {
             throw new Error(error.message || "Authorization failed");
@@ -67,7 +73,9 @@ const handler = NextAuth({
           await User.create({
             name: profile?.name,
             email: profile?.email,
-            image: profile?.image, // For Google, the image is in `picture`
+            image: profile?.image, // For Google, the image is in `picture`  role: "member"
+              role: "member"
+
           });
         }
       }
@@ -79,6 +87,7 @@ const handler = NextAuth({
         token.email = user.email;
         token.name = user.name;
         token.image = user.image;
+        token.role = user.role;
       }
       return token;
     },
@@ -89,6 +98,7 @@ const handler = NextAuth({
           email: token.email,
           name: token.name,
           image: token.image as string,
+          role: token.role as "owner" | "member" 
         };
       }
       return session;

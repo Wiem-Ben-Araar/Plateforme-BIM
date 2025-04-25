@@ -1,10 +1,13 @@
+// models/user.ts
 import mongoose, { Document, Model, Schema } from "mongoose";
 
 interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
-  annotations: mongoose.Types.ObjectId[]; // Référence aux annotations
+  role: "owner" | "member"; // Ajout du rôle
+  annotations: mongoose.Types.ObjectId[];
+  image?: string; // Ajout optionnel pour les providers OAuth
 }
 
 const UserSchema: Schema<IUser> = new mongoose.Schema({
@@ -21,10 +24,19 @@ const UserSchema: Schema<IUser> = new mongoose.Schema({
     type: String,
     required: false,
   },
+  role: {
+    type: String,
+    enum: ["owner", "member"],
+    default: "member" // Valeur par défaut
+  },
   annotations: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Annotation', // Référence aux annotations
+    ref: 'Annotation',
   }],
+  image: {
+    type: String,
+    required: false
+  }
 });
 
 const User: Model<IUser> =

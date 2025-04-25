@@ -27,10 +27,19 @@ import { toast } from "sonner"; // Assuming you're using shadcn/ui toast
 
 export default function ProjectsPage() {
   const { data: session, status } = useSession();
-  const [projects, setProjects] = useState<{ id: number; name: string; updatedAt: string; _id?: string }[]>([]);
+  const [projects, setProjects] = useState<{ 
+    id: number; 
+    name: string; 
+    updatedAt: string; 
+    _id?: string;
+    owner?: string;
+    userRole?: "owner" | "member";
+  }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  
+  const currentUserEmail = session?.user?.email;
 
   // Fetch projects
   const fetchProjects = () => {
@@ -67,6 +76,36 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [status]);
 
+  // Fetch user roles for each project
+  useEffect(() => {
+    if (projects.length > 0 && status === "authenticated") {
+      const fetchRolesForProjects = async () => {
+        const updatedProjects = [...projects];
+        
+        for (let i = 0; i < updatedProjects.length; i++) {
+          const project = updatedProjects[i];
+          const projectId = project._id || project.id;
+          
+          try {
+            const response = await fetch(`/api/projects/${projectId}/role`);
+            const data = await response.json();
+            
+            updatedProjects[i] = {
+              ...project,
+              userRole: data.role
+            };
+          } catch (err) {
+            console.error(`Erreur lors de la récupération du rôle pour le projet ${projectId}:`, err);
+          }
+        }
+        
+        setProjects(updatedProjects);
+      };
+      
+      fetchRolesForProjects();
+    }
+  }, [projects.length, status]);
+
   const handleGoBack = () => {
     router.back();
   };
@@ -90,6 +129,12 @@ export default function ProjectsPage() {
       console.error("Erreur lors de la suppression du projet:", err);
       toast.error("Échec de la suppression du projet");
     }
+  };
+
+  // Check if user has permission to edit/delete project
+  const canModifyProject = (project: any) => {
+    // User can modify if they're the owner
+    return project.userRole === "owner" || project.owner === currentUserEmail;
   };
 
   if (status === "unauthenticated") {
@@ -153,6 +198,11 @@ export default function ProjectsPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">{project.name}</CardTitle>
                 <CardDescription>Mis à jour {project.updatedAt}</CardDescription>
+                {project.userRole && (
+                  <CardDescription className="mt-1">
+                    Rôle: <span className="font-medium capitalize">{project.userRole}</span>
+                  </CardDescription>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="h-32 bg-muted rounded-md flex items-center justify-center">
@@ -169,23 +219,29 @@ export default function ProjectsPage() {
                     Ouvrir
                   </Link>
                 </Button>
+                {canModifyProject(project) && (
                 <Button 
                   variant="outline" 
                   size="icon"
                   onClick={() => router.push(`/edit-project/${project._id || project.id}`)}
                   title="Modifier le projet"
+              
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
+                   )}
                 <Dialog>
                   <DialogTrigger asChild>
+                  {canModifyProject(project) && (
                     <Button 
                       variant="destructive" 
                       size="icon"
                       title="Supprimer le projet"
+              
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    )}
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>

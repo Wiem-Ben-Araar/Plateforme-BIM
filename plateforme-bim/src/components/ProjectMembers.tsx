@@ -30,9 +30,10 @@ interface Member {
 interface ProjectMembersProps {
   projectId: string
   projectName?: string
+  userRole: "owner" | "member"; 
 }
 
-export default function ProjectMembers({ projectId, projectName = "this project" }: ProjectMembersProps) {
+export default function ProjectMembers({ projectId, projectName = "this project" , userRole }: ProjectMembersProps) {
   const { data: session } = useSession()
   const [members, setMembers] = useState<Member[]>([])
   const [invitations, setInvitations] = useState<any[]>([])
@@ -181,10 +182,17 @@ export default function ProjectMembers({ projectId, projectName = "this project"
         <h2 className="text-2xl font-bold">Project Members</h2>
         <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Invite Member
-            </Button>
+          <DialogTrigger asChild>
+          {userRole === "owner" && (
+  <DialogTrigger asChild>
+    <Button>
+      <UserPlus className="h-4 w-4 mr-2" />
+      Invite Member
+    </Button>
+  </DialogTrigger>
+)}
+
+</DialogTrigger>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

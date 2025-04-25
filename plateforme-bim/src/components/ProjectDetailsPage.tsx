@@ -9,6 +9,7 @@ import { Building, Users, FileBox, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import ProjectFiles from "@/components/ProjectFiles";
 import ProjectMembers from "@/components/ProjectMembers";
+import { useSession } from "next-auth/react";
 
 // Définition des types
 interface Project {
@@ -16,7 +17,6 @@ interface Project {
   name: string;
   description: string;
   status: string;
-  project_files?: ProjectFile[];
 }
 
 interface ProjectFile {
@@ -27,7 +27,16 @@ interface ProjectFile {
   file_url: string;
 }
 
+interface ProjectMember {
+  id: string;
+  name: string;
+  email: string;
+  image: string;
+  role: string;
+}
+
 export default function ProjectDetailsPage() {
+  const { data: session } = useSession(); 
   const params = useParams();
   const router = useRouter();
   
@@ -37,8 +46,11 @@ export default function ProjectDetailsPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState<"owner" | "member">("member");
 
+  // Fetch project details
   useEffect(() => {
     if (!projectId) return;
 
@@ -53,19 +65,7 @@ export default function ProjectDetailsPage() {
 
         const data = await response.json();
         console.log("Projet récupéré:", data);
-
         setProject(data);
-
-        // Formater les fichiers
-        const formattedFiles = data.files?.map((file: any) => ({
-          id: file._id || "",
-          name: `Fichier ${(file._id || "").slice(-6)}`,
-          version: 1,
-          file_size: 0, 
-          file_url: `/api/upload/${file._id}`
-        })) || [];
-
-        setFiles(formattedFiles);
       } catch (error) {
         console.error("Erreur lors de la récupération du projet:", error);
       } finally {
@@ -75,6 +75,67 @@ export default function ProjectDetailsPage() {
 
     fetchProject();
   }, [projectId]);
+
+  // Fetch project files
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const fetchFiles = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/files`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch files: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setFiles(data);
+      } catch (error) {
+        console.error("Erreur lors de la récupération des fichiers:", error);
+      }
+    };
+    
+    fetchFiles();
+  }, [projectId]);
+
+  // Fetch project members
+  useEffect(() => {
+    if (!projectId) return;
+    
+    const fetchMembers = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/members`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch members: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setMembers(data.members || []);
+      } catch (error) {
+        console.error("Erreur lors de la récupération des membres:", error);
+      }
+    };
+    
+    fetchMembers();
+  }, [projectId]);
+
+  // Fetch user role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/role`);
+        const data = await response.json();
+        setUserRole(data.role);
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+      }
+    };
+  
+    if (session) {
+      fetchUserRole();
+    }
+  }, [session, projectId]);
 
   // Gestion du chargement
   if (loading) {
@@ -145,7 +206,7 @@ export default function ProjectDetailsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">0</p>
+                <p className="text-2xl font-bold">{members.length}</p>
                 <p className="text-sm text-gray-500">Active members</p>
               </CardContent>
             </Card>
@@ -166,11 +227,11 @@ export default function ProjectDetailsPage() {
         </TabsContent>
 
         <TabsContent value="files">
-          <ProjectFiles projectId={projectId} files={files} />
+          <ProjectFiles projectId={projectId} files={files} userRole={userRole} />
         </TabsContent>
 
         <TabsContent value="members">
-          <ProjectMembers projectId={projectId} />
+          <ProjectMembers projectId={projectId} userRole={userRole} />
         </TabsContent>
       </Tabs>
     </div>

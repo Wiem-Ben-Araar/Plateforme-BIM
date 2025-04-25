@@ -5,42 +5,49 @@ import connectToDatabase from "@/lib/mongodb";
 import mongoose from "mongoose";
 import File from "@/models/file";
 import Project from "@/models/project";
+import User from "@/models/user"; // Make sure this import exists
 
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const files = formData.getAll("file") as File[]; // Assurez-vous que "file" est le bon nom de champ
+    const files = formData.getAll("file") as File[]; 
     const projectId = formData.get("projectId") as string;
-
-    console.log("FormData received -> projectId:", projectId, "files count:", files.length);
+    const userEmail = formData.get("userEmail") as string;
+    console.log("FormData received -> projectId:", projectId, "files count:", files.length, "userEmail:", userEmail);
 
     if (!files || files.length === 0) {
-      return NextResponse.json({ error: "Aucun fichier fourni" }, { status: 400 });
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Vérifier que projectId est fourni
     if (!projectId) {
-      return NextResponse.json({ error: "ProjectId est requis" }, { status: 400 });
+      return NextResponse.json({ error: "ProjectId is required" }, { status: 400 });
     }
 
-    // Connexion à la base de données
     await connectToDatabase();
 
-    // Vérifier que le projet existe
     const project = await Project.findById(projectId);
     if (!project) {
-      return NextResponse.json({ error: `Projet avec l'ID ${projectId} non trouvé` }, { status: 404 });
+      return NextResponse.json({ error: `Project with ID ${projectId} not found` }, { status: 404 });
     }
 
-    const downloadURLs: string[] = [];
-    const fileMetadata: Array<{ id: string; name: string; url: string }> = [];
-    const newFileIds: mongoose.Types.ObjectId[] = [];
+    // Try to find the user by email if provided
+    let userId = null;
+    if (userEmail) {
+      const user = await User.findOne({ email: userEmail });
+      if (user) {
+        userId = user._id;
+      }
+    }
+
+    const downloadURLs = [];
+    const fileMetadata = [];
+    const newFileIds = [];
 
     for (const file of files) {
-      // Vérifier que le fichier est au format IFC
+      // Check if file is IFC format
       if (!file.name.toLowerCase().endsWith('.ifc')) {
         return NextResponse.json(
-          { error: "Tous les fichiers doivent être au format IFC" },
+          { error: "All files must be in IFC format" },
           { status: 400 }
         );
       }
@@ -51,27 +58,29 @@ export async function POST(request: Request) {
         const storagePath = `projects/${projectId}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
-        // Upload sur Firebase Storage
+        // Upload to Firebase Storage
         const snapshot = await uploadBytes(storageRef, file);
         const downloadURL = await getDownloadURL(snapshot.ref);
 
         if (downloadURL) {
           downloadURLs.push(downloadURL);
 
-          // Créer un nouveau document File dans MongoDB
+          // Create a new File document in MongoDB
           const newFile = new File({
             name: file.name,
             file_url: downloadURL,
             file_size: file.size,
-            fileType: file.name.toLowerCase().endsWith('.ifc') ? 'IFC' : 'other', // Définir le type en fonction de l'extension
+            fileType: file.name.toLowerCase().endsWith('.ifc') ? 'IFC' : 'other',
             version: 1,
             project: new mongoose.Types.ObjectId(projectId),
-            firebasePath: storagePath, 
+            firebasePath: storagePath,
+            // Use the user ID if found, otherwise store the email as string
+            uploadedBy: userId || userEmail || "unknown"
           });
 
-          // Sauvegarder le fichier dans MongoDB
+          // Save the file in MongoDB
           await newFile.save();
-          console.log("Fichier enregistré avec l'ID:", newFile._id);
+          console.log("File saved with ID:", newFile._id);
 
           fileMetadata.push({
             id: newFile._id.toString(),
@@ -81,26 +90,26 @@ export async function POST(request: Request) {
 
           newFileIds.push(newFile._id);
         } else {
-          console.error("Échec de la récupération de l'URL pour", file.name);
+          console.error("Failed to get URL for", file.name);
         }
       } catch (fileError) {
-        console.error("Erreur lors du traitement du fichier", file.name, fileError);
-        // Continuer avec les autres fichiers
+        console.error("Error processing file", file.name, fileError);
+        // Continue with other files
       }
     }
 
-    // Mettre à jour le projet avec les nouveaux fichiers
+    // Update project with new files
     if (newFileIds.length > 0) {
       const updatedProject = await Project.findByIdAndUpdate(
         projectId,
         { $push: { files: { $each: newFileIds } } },
         { new: true }
-      );
-
+      ).populate('files');
+      
       if (!updatedProject) {
-        console.error(`Projet avec l'ID ${projectId} non trouvé lors de la mise à jour.`);
+        console.error(`Project with ID ${projectId} not found during update.`);
       } else {
-        console.log("Mise à jour du projet effectuée. Fichiers dans le projet:", updatedProject.files.length);
+        console.log("Project update completed. Files in project:", updatedProject.files.length);
       }
     }
 
@@ -108,12 +117,12 @@ export async function POST(request: Request) {
       downloadURLs,
       fileMetadata,
       success: downloadURLs.length > 0,
-      message: `${downloadURLs.length} fichier(s) uploadé(s) avec succès`,
+      message: `${downloadURLs.length} file(s) uploaded successfully`,
     });
   } catch (error) {
-    console.error("Erreur d'upload:", error);
+    console.error("Upload error:", error);
     return NextResponse.json(
-      { error: "Échec de l'upload", details: error instanceof Error ? error.message : String(error) },
+      { error: "Upload failed", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
@@ -156,7 +165,33 @@ export async function DELETE(request: Request) {
 
     await connectToDatabase();
 
-    // Récupérer le fichier avec vérification du projet
+    // Check if this is a temporary ID (starts with "temp-")
+    if (fileId.startsWith('temp-')) {
+      // For temporary files, just delete from Firebase if path exists
+      if (firebasePath) {
+        try {
+          const storageRef = ref(storage, firebasePath);
+          await deleteObject(storageRef);
+          console.log(`Fichier temporaire supprimé de Firebase: ${firebasePath}`);
+        } catch (storageError) {
+          console.error("Erreur Firebase Storage:", storageError);
+        }
+      }
+
+      // For temporary IDs, we DON'T try to update the project in MongoDB
+      // since temp IDs aren't stored in the database
+
+      return NextResponse.json({
+        success: true,
+        message: "Fichier temporaire supprimé avec succès",
+        deletedFile: {
+          id: fileId,
+          firebasePath
+        }
+      });
+    }
+
+    // Regular MongoDB ObjectID handling
     const fileToDelete = await File.findById(fileId);
     if (!fileToDelete) {
       return NextResponse.json({ error: "Fichier non trouvé" }, { status: 404 });
@@ -192,14 +227,14 @@ export async function DELETE(request: Request) {
     if (projectId) {
       await Project.findByIdAndUpdate(
         projectId,
-        { $pull: { files: fileId } },
+        { $pull: { files: new mongoose.Types.ObjectId(fileId) } },
         { new: true }
       );
     } else if (fileToDelete.project) {
       // Si projectId n'est pas fourni, utiliser celui du document
       await Project.findByIdAndUpdate(
         fileToDelete.project,
-        { $pull: { files: fileId } },
+        { $pull: { files: new mongoose.Types.ObjectId(fileId) } },
         { new: true }
       );
     }
@@ -220,7 +255,7 @@ export async function DELETE(request: Request) {
       { 
         error: "Échec de la suppression",
         details: error instanceof Error ? error.message : String(error),
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        stack: process.env.NODE_ENV === 'development' ? (error instanceof Error && error.stack) : undefined
       },
       { status: 500 }
     );

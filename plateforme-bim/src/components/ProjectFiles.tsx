@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useSession } from 'next-auth/react';
 
 interface ProjectFile {
   id: string;
@@ -16,15 +17,21 @@ interface ProjectFile {
   file_size?: number;
   file_url: string;
   firebasePath?: string;
+  uploadedBy?: string; 
 }
 
 interface ProjectFilesProps {
   projectId: string;
   files: ProjectFile[];
+  userRole: "owner" | "member";
 }
 
-export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProps) {
+export default function ProjectFiles({ projectId, files = [], userRole }: ProjectFilesProps) {
   const [loading, setLoading] = useState(false);
+  const { data: session } = useSession();
+  const currentUserEmail = session?.user?.email;
+  const currentUserId = session?.user?.id; // Récupérer l'ID utilisateur depuis la session
+
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const router = useRouter();
   
@@ -44,32 +51,28 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
            !url.includes("undefined");
   };
 
-  // Préparer les fichiers initiaux avec une adaptation minimale
-  const adaptFiles = (inputFiles: ProjectFile[]) => {
+  // Préparer les fichiers initiaux
+  const adaptFiles = (inputFiles: any[]): ProjectFile[] => {
     return inputFiles.map((file) => {
-      // S'assurer que nous stockons l'URL complète et non seulement une référence
-      let fileUrl = file.file_url;
+      // Create a proper ID - use MongoDB ID if available, otherwise create a temp ID
+      const id = file._id?.$oid || file._id?.toString() || `temp-${Math.random()}`;
       
-      // Si l'URL est invalide, essayer d'obtenir à partir de firebasePath
-      if (!isValidFileUrl(fileUrl) && isValidFileUrl(file.firebasePath)) {
-        fileUrl = file.firebasePath;
-      }
-  
       return {
-        id: file.id || `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: file.name || "Fichier sans nom",
-        version: file.version || 1,
-        file_size: file.file_size || 0,
-        file_url: fileUrl,
-        // Assurons-nous de conserver firebasePath si disponible
-        firebasePath: file.firebasePath
+        id: id,
+        name: file.name,
+        version: file.version,
+        file_size: file.file_size,
+        file_url: file.file_url,
+        firebasePath: file.firebasePath,
+        uploadedBy: file.uploadedBy,
+        uploadedByEmail: file.uploadedByEmail
       };
     });
   };
 
-  // Mettre à jour viewAllUrl en fonction des URL valides des fichiers et ajouter le projectId
+  // Mettre à jour viewAllUrl et stocker les URLs valides pour la visualisation
   const updateViewAllUrl = () => {
-    // Ne filtrer que les fichiers avec des URLs valides
+    // Récupérer tous les fichiers avec des URLs valides
     const validFiles = projectFiles.filter(file => isValidFileUrl(file.file_url));
     const validUrls = validFiles.map(file => file.file_url);
     
@@ -77,12 +80,11 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     setHasValidFiles(valid);
     
     if (valid) {
-      // Sauvegarder les URLs valides et le projectId dans sessionStorage
+      // Sauvegarder les URLs et projectId
       sessionStorage.setItem(`valid_urls_${projectId}`, JSON.stringify(validUrls));
       sessionStorage.setItem(`current_project_id`, projectId);
       
       const urlStr = JSON.stringify(validUrls);
-      // Ajouter le projectId comme paramètre d'URL
       const newViewAllUrl = `/viewer?files=${encodeURIComponent(urlStr)}&projectId=${encodeURIComponent(projectId)}`;
       setViewAllUrl(newViewAllUrl);
     } else {
@@ -91,66 +93,81 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     }
   };
 
-  const handleDelete = async (fileId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) return;
-  
-    setLoading(true);
-    try {
-      // Trouver le fichier à supprimer pour obtenir son chemin Firebase
-      const fileToDelete = projectFiles.find(file => file.id === fileId);
-      
-      if (!fileToDelete) {
-        throw new Error("Fichier non trouvé");
-      }
-  
-      const response = await fetch("/api/upload", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          fileId, 
-          projectId,
-          firebasePath: fileToDelete.firebasePath
-        }),
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.error || "Erreur lors de la suppression");
-      }
-  
-      // Mettre à jour l'état local après la suppression réussie
-      const updatedFiles = projectFiles.filter((file) => file.id !== fileId);
-      setProjectFiles(updatedFiles);
-  
-      // Mettre à jour localStorage
-      localStorage.setItem(
-        `project_files_${projectId}`,
-        JSON.stringify(updatedFiles)
-      );
-  
-      // Mettre à jour viewAllUrl
-      updateViewAllUrl();
-  
-      // Rafraîchir la page
-      router.refresh();
-  
-      // Afficher un message de succès
-      alert("Fichier supprimé avec succès");
-      
-    } catch (error) {
-      console.error("Erreur lors de la suppression du fichier:", error);
-      alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : "Une erreur inconnue s'est produite"}`);
-    } finally {
-      setLoading(false);
+  // Suppression de fichier
+// In your ProjectFiles component
+const handleDelete = async (fileId: string) => {
+  if (!confirm("Êtes-vous sûr de vouloir supprimer ce fichier ?")) return;
+
+  setLoading(true);
+  try {
+    // Find the file to delete
+    const fileToDelete = projectFiles.find(file => file.id === fileId);
+    
+    if (!fileToDelete) {
+      throw new Error("Fichier non trouvé");
     }
-  };
+    
+    // Check if this is a MongoDB ID or a temporary ID
+    const isMongoId = !fileId.startsWith('temp-');
+    
+    const response = await fetch("/api/upload", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ 
+        fileId, 
+        projectId,
+        firebasePath: fileToDelete.firebasePath,
+        // Send user info
+        userEmail: currentUserEmail,
+        userId: currentUserId,
+        isTemporary: !isMongoId
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Erreur lors de la suppression");
+    }
+    
+    const data = await response.json();
+    
+    // Update local state
+    const updatedFiles = projectFiles.filter((file) => file.id !== fileId);
+    setProjectFiles(updatedFiles);
+
+    // Update localStorage
+    localStorage.setItem(
+      `project_files_${projectId}`,
+      JSON.stringify(updatedFiles)
+    );
+
+    // Update viewAllUrl
+    updateViewAllUrl();
+
+    // Refresh the page only if it was a real MongoDB file
+    if (isMongoId) {
+      router.refresh();
+      // Also refresh the file list from server
+      await fetchFiles();
+    }
+
+    alert("Fichier supprimé avec succès");
+    
+  } catch (error) {
+    console.error("Erreur lors de la suppression du fichier:", error);
+    alert(`Erreur lors de la suppression: ${error instanceof Error ? error.message : "Une erreur inconnue s'est produite"}`);
+  } finally {
+    setLoading(false);
+  }
+};
   
+  // Chargement initial des fichiers
   useEffect(() => {
     const loadFiles = () => {
       try {
+        // Essayer de charger depuis localStorage d'abord
         const savedFiles = localStorage.getItem(`project_files_${projectId}`);
         
         if (savedFiles) {
@@ -163,7 +180,7 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
           }
         }
         
-        // Si pas de fichiers valides sauvegardés, utiliser les props
+        // Sinon utiliser les props
         console.log("Loading files from props:", files);
         const adaptedFiles = adaptFiles(files);
         setProjectFiles(adaptedFiles);
@@ -179,13 +196,14 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     loadFiles();
   }, [projectId, files]);
 
+  // Gestion du téléversement
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       setError("Veuillez sélectionner au moins un fichier.");
       return;
     }
   
-    // Vérifier que tous les fichiers ont l'extension IFC
+    // Vérifier le format des fichiers
     for (const file of selectedFiles) {
       if (!file.name.toLowerCase().endsWith('.ifc')) {
         setError("Tous les fichiers doivent être au format IFC.");
@@ -197,49 +215,34 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     setError(null);
     const formData = new FormData();
   
-    // Ajouter des fichiers à FormData
     selectedFiles.forEach((file) => {
-      formData.append("file", file); // Assurez-vous que "file" est le bon nom de champ
+      formData.append("file", file);
     });
   
-    // Ajouter l'ID du projet à FormData
     formData.append("projectId", projectId);
+    
+    // Ajouter l'email et l'ID de l'utilisateur actuel lors de l'upload
+    if (currentUserEmail) {
+      formData.append("userEmail", currentUserEmail);
+    }
+    if (currentUserId) {
+      formData.append("userId", currentUserId);
+    }
   
     try {
       const response = await fetch("/api/upload", {
         method: "POST",
-        body: formData, // Pas besoin de headers pour FormData
+        body: formData,
       });
   
       const data = await response.json();
   
       if (response.ok) {
         setUploadDialogOpen(false);
-  
-        if (data.fileMetadata && data.fileMetadata.length > 0) {
-          const newFiles = data.fileMetadata.map((fileInfo: any) => ({
-            id: fileInfo.id,
-            name: fileInfo.name,
-            version: 1,
-            file_size: selectedFiles.find((f) => f.name === fileInfo.name)?.size || 0,
-            file_url: fileInfo.url || "",
-            firebasePath: fileInfo.firebasePath || fileInfo.url || "",
-          }));
-  
-          // Mettre à jour les fichiers et s'assurer de déclencher une mise à jour d'état
-          const updatedFiles = [...projectFiles, ...newFiles];
-          setProjectFiles(updatedFiles);
-  
-          // Mettre à jour localStorage
-          localStorage.setItem(
-            `project_files_${projectId}`,
-            JSON.stringify(updatedFiles)
-          );
-  
-          // Mettre à jour sessionStorage avec les URLs valides
-          updateViewAllUrl();
-        }
-  
+        
+        // Actualiser directement les fichiers depuis l'API
+        await fetchFiles();
+        
         router.refresh();
       } else {
         setError(data.error || "Une erreur est survenue lors de l'upload.");
@@ -252,9 +255,8 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     }
   };
 
-  // Initialiser et mettre à jour l'état des fichiers
+  // Initialiser viewAllUrl depuis sessionStorage
   useEffect(() => {
-    // Essayer de récupérer les URLs valides de sessionStorage
     const savedUrls = sessionStorage.getItem(`valid_urls_${projectId}`);
     if (savedUrls) {
       try {
@@ -262,9 +264,7 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
         if (Array.isArray(validUrls) && validUrls.length > 0) {
           setHasValidFiles(true);
           const urlStr = JSON.stringify(validUrls);
-          // Ajouter le projectId au lien
           setViewAllUrl(`/viewer?files=${encodeURIComponent(urlStr)}&projectId=${encodeURIComponent(projectId)}`);
-          // Stocker le projectId actuel
           sessionStorage.setItem(`current_project_id`, projectId);
         }
       } catch (e) {
@@ -273,19 +273,92 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
     }
   }, [projectId]);
 
-  // Mettre à jour viewAllUrl chaque fois que les fichiers du projet changent
+  // Mettre à jour viewAllUrl quand les fichiers changent
   useEffect(() => {
     if (projectFiles.length > 0) {
       updateViewAllUrl();
     }
   }, [projectFiles]);
 
+  // Formater la taille du fichier
   function formatFileSize(size: number): string {
     if (size < 1024) return `${size} B`;
     if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
     if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(2)} MB`;
     return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
+ 
+  // Récupérer les fichiers depuis l'API
+  const fetchFiles = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/files`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erreur de chargement");
+      }
+      
+      const data = await response.json();
+      console.log("Fetched files:", data);
+      const adaptedFiles = adaptFiles(data);
+      setProjectFiles(adaptedFiles);
+      
+      // Update local storage
+      localStorage.setItem(
+        `project_files_${projectId}`,
+        JSON.stringify(adaptedFiles)
+      );
+    } catch (error) {
+      console.error("Erreur lors du chargement des fichiers:", error);
+    }
+  };
+
+  // Récupérer les fichiers au chargement du composant
+  useEffect(() => {
+    fetchFiles();
+    
+    // Rafraîchir périodiquement
+    const interval = setInterval(() => {
+      fetchFiles();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [projectId]); 
+  
+  // Vérifier si l'utilisateur peut supprimer un fichier - FIXED FUNCTION
+  const canDeleteFile = (file: ProjectFile) => {
+    // Les propriétaires peuvent toujours supprimer
+    if (userRole === "owner") return true;
+  
+    // Vérifier si l'utilisateur actuel est l'uploader
+    return file.uploadedBy === currentUserId;
+  };
+  
+  // Fonction pour tronquer les noms de fichier trop longs
+  const truncateFileName = (fileName: string, maxLength: number = 35) => {
+    if (fileName.length <= maxLength) return fileName;
+    
+    const extension = fileName.split('.').pop() || '';
+    const nameWithoutExt = fileName.substring(0, fileName.length - extension.length - 1);
+    
+    if (nameWithoutExt.length <= maxLength - 3 - extension.length) {
+      return fileName;
+    }
+    
+    return `${nameWithoutExt.substring(0, maxLength - 3 - extension.length)}...${extension ? `.${extension}` : ''}`;
+  };
+  
+  const extractUsername = (identifier?: string) => {
+    if (!identifier) return "Unknown";
+    
+    // Si c'est un ID MongoDB
+    if (/^[0-9a-f]{24}$/.test(identifier)) {
+      return `User ${identifier.slice(0, 5)}...`;
+    }
+    
+    return identifier;
+  };
+  
   
   return (
     <div className="space-y-4">
@@ -400,54 +473,86 @@ export default function ProjectFiles({ projectId, files = [] }: ProjectFilesProp
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projectFiles.map((file) => (
-            <Card key={file.id} className="p-4">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center">
-                  <FileBox className="h-8 w-8 text-blue-500 mr-3" />
-                  <div>
-                    <h3 className="font-medium">{file.name}</h3>
-                    <div className="text-sm text-gray-500">
-                      Version {file.version} • {formatFileSize(file.file_size || 0)}
+          {projectFiles.map((file) => {
+            // Vérifier si l'URL est valide pour le téléchargement
+            const validUrl = isValidFileUrl(file.file_url);
+            
+            // Déterminer si l'utilisateur peut supprimer ce fichier
+            const canDelete = canDeleteFile(file);
+            
+            // Tronquer le nom du fichier pour l'affichage
+            const displayName = truncateFileName(file.name);
+            
+            // Extraire le nom d'utilisateur depuis l'email ou l'ID
+            const username = file.uploadedBy ? extractUsername(file.uploadedBy) : "Unknown";
+            
+            // Pour déboguer
+            console.log(`File ${file.name}:
+            - Can delete: ${canDelete}
+            - uploadedBy: ${file.uploadedBy}
+            - currentUserId: ${currentUserId}
+            - currentUserEmail: ${currentUserEmail}
+            - userRole: ${userRole}`);
+            
+            return (
+              <Card key={file.id} className="p-4">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center">
+                    <FileBox className="h-8 w-8 text-blue-500 mr-3 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-medium truncate" title={file.name}>
+                        {displayName}
+                      </h3>
+                      <div className="text-sm text-gray-500">
+                        Version {file.version} • {formatFileSize(file.file_size || 0)}
+                      </div>
+                    
+                      {file.uploadedBy && (
+  <div className="text-sm text-gray-500">
+    Created by{' '}
+    <span className="font-medium">
+      {file.uploadedByEmail 
+        ? file.uploadedByEmail.split('@')[0] // Afficher le nom avant @
+        : `User ${file.uploadedBy.substring(0, 5)}...`}
+    </span>
+  </div>
+)}
                     </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="flex gap-2">
-                {isValidFileUrl(file.file_url) ? (
+                
+                <div className="flex gap-2">
+                  {/* Bouton de téléchargement toujours disponible si URL valide */}
                   <Button
                     variant="outline"
                     size="sm"
                     className="flex-1"
                     onClick={() => window.open(file.file_url)}
+                    disabled={!validUrl}
                   >
                     <Download className="h-4 w-4 mr-2" />
-                    Download
+                    {validUrl ? "Download" : "Download Unavailable"}
                   </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    disabled
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Unavailable
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="text-red-500 hover:text-red-700"
-                  onClick={() => handleDelete(file.id)}
-                  disabled={loading}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+                  
+                  {/* Afficher le bouton de suppression si l'utilisateur peut supprimer */}
+                  {canDelete && (
+                    <Button
+                      onClick={() => handleDelete(file.id)}
+                      variant="destructive"
+                      size="sm"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

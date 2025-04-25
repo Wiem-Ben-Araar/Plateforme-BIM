@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { User2, Trash2, X, Plus } from "lucide-react"
 import * as THREE from "three"
-
+import JSZip from 'jszip';
 // Interface Todo
 export interface Todo {
   _id: string
@@ -762,336 +762,355 @@ export function TodoManager({ viewerRef, session, toast }: TodoManagerProps) {
       toast.error("Échec de la suppression")
     }
   }
-const exportBCF = () => {
-  const JSZip = require("jszip");
-  const zip = new JSZip();
-
-  // Fichier de version BCF - obligatoire et conforme à la spécification BCF 2.1
-  zip.file(
-    "bcf.version",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Version VersionId="2.1">
-  <DetailedVersion>2.1</DetailedVersion>
-</Version>`
-  );
-
-  console.log("Création du fichier BCF avec", todos.length, "todos");
-
-  // Limiter à maximum 10 todos pour éviter les problèmes de taille
-  const todosToExport = todos.slice(0, 10);
-
-  // Fonction pour s'assurer que les vecteurs direction et up sont perpendiculaires
-  function ensureVectorsPerpendicular(camera) {
-    // Normaliser le vecteur direction
-    const dirLength = Math.sqrt(
-      camera.direction.x * camera.direction.x +
-      camera.direction.y * camera.direction.y +
-      camera.direction.z * camera.direction.z
-    );
-    
-    if (dirLength > 0) {
-      camera.direction.x /= dirLength;
-      camera.direction.y /= dirLength;
-      camera.direction.z /= dirLength;
-    }
-    
-    // Normaliser le vecteur up initial
-    const upLength = Math.sqrt(
-      camera.up.x * camera.up.x +
-      camera.up.y * camera.up.y +
-      camera.up.z * camera.up.z
-    );
-    
-    if (upLength > 0) {
-      camera.up.x /= upLength;
-      camera.up.y /= upLength;
-      camera.up.z /= upLength;
-    }
-    
-    // Calculer le produit scalaire entre direction et up
-    const dotProduct = 
-      camera.direction.x * camera.up.x +
-      camera.direction.y * camera.up.y +
-      camera.direction.z * camera.up.z;
-    
-    // Si les vecteurs ne sont pas perpendiculaires
-    if (Math.abs(dotProduct) > 0.0001) {
-      // Utiliser un produit vectoriel pour créer un vecteur perpendiculaire
-      // Calculer le produit vectoriel entre direction et (0,1,0)
-      const auxVector = { x: 0, y: 1, z: 0 };
-      
-      // Si direction est trop proche de auxVector, utiliser un autre vecteur auxiliaire
-      if (Math.abs(camera.direction.y) > 0.9) {
-        auxVector.x = 1;
-        auxVector.y = 0;
-      }
-      
-      // Calculer le produit vectoriel
-      const crossX = camera.direction.y * auxVector.z - camera.direction.z * auxVector.y;
-      const crossY = camera.direction.z * auxVector.x - camera.direction.x * auxVector.z;
-      const crossZ = camera.direction.x * auxVector.y - camera.direction.y * auxVector.x;
-      
-      // Normaliser le résultat
-      const crossLength = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
-      
-      if (crossLength > 0) {
-        camera.up.x = crossX / crossLength;
-        camera.up.y = crossY / crossLength;
-        camera.up.z = crossZ / crossLength;
-      } else {
-        // Fallback si le produit vectoriel est nul
-        camera.up = { x: 0, y: 1, z: 0 };
-        if (Math.abs(camera.direction.y) > 0.9) {
-          camera.up = { x: 1, y: 0, z: 0 };
-        }
-      }
-    }
-    
-    return camera;
-  }
-
-  // Fonction pour mapper les priorités du schéma Mongoose aux valeurs BCF
-  function mapPriority(priority) {
-    switch (priority) {
-      case "low": return "Low";
-      case "normal": return "Normal";
-      case "high": return "High";
-      case "critical": return "Critical";
-      default: return "Medium";
-    }
-  }
-
-  // Fonction pour générer un UUID au format standard
-  function generateUUID() {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16).toUpperCase();
-    });
-  }
-
-  // Pour chaque todo, créer un dossier avec un GUID standard
-  todosToExport.forEach((todo, index) => {
-    // Utiliser un GUID fixe pour le premier todo (pour le débogage)
-    const topicGuid = index === 0
-      ? "63E78882-7C6A-4BF7-8982-FC478AFB9C97"
-      : generateUUID();
-
-    console.log(`Création du dossier pour todo '${todo.title}' avec GUID ${topicGuid}`);
-    const topicFolder = zip.folder(topicGuid);
-    
-    // Vérifier que le viewpoint est bien chargé
-    if (!todo.viewpoint) {
-      console.log(`Todo '${todo.title}' n'a pas de viewpoint associé, utilisation de valeurs par défaut.`);
-    }
-    
-    const viewpointGuid = todo.viewpoint?.guid || generateUUID();
-
-    // Nettoyer les textes pour éviter les problèmes XML
-    const safeTitle = (todo.title || "Todo").replace(/[<>&'"]/g, "");
-    const safeDesc = (todo.description || "Description").replace(/[<>&'"]/g, "");
-    const safeAuthor = (todo.createdBy || "User").replace(/[<>&'"]/g, "");
-
-    // Fichier markup.bcf - contient les métadonnées du todo
-    // Format strictement conforme à BCF 2.1
-    topicFolder.file(
-      "markup.bcf",
+  const exportBCF = () => {
+    const JSZip = require("jszip");
+    const zip = new JSZip();
+  
+    // Fichier de version BCF - obligatoire et conforme à la spécification BCF 2.1
+    zip.file(
+      "bcf.version",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Markup>
-  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="${todo.status || 'Open'}">
-    <Title>${safeTitle}</Title>
-    <Description>${safeDesc}</Description>
-    <CreationDate>${new Date(todo.createdAt).toISOString()}</CreationDate>
-    <CreationAuthor>${safeAuthor}</CreationAuthor>
-    <ModifiedDate>${new Date(todo.updatedAt || todo.createdAt).toISOString()}</ModifiedDate>
-    <ModifiedAuthor>${safeAuthor}</ModifiedAuthor>
-    <Priority>${mapPriority(todo.priority)}</Priority>
-  </Topic>
-  <Viewpoints>
-    <Viewpoint Guid="${viewpointGuid}">
-      <ViewpointReference>viewpoint.bcfv</ViewpointReference>
-      <Snapshot>snapshot.png</Snapshot>
-    </Viewpoint>
-  </Viewpoints>
-</Markup>`
+  <Version VersionId="2.1">
+    <DetailedVersion>2.1</DetailedVersion>
+  </Version>`
     );
-
-    // Extraire et transformer les données de caméra du viewpoint pour Revit/BIMTrack
-    let camera = {
-      position: { x: 0, y: 0, z: 0 },
-      direction: { x: 0, y: 0, z: -1 },
-      up: { x: 0, y: 1, z: 0 }
-    };
-
-    if (todo.viewpoint) {
-      // Nouvelle structure avec camera_view_point, camera_direction et camera_up_vector
-      if (todo.viewpoint.camera_view_point && todo.viewpoint.camera_direction && todo.viewpoint.camera_up_vector) {
-        // Détermine le facteur de zoom en fonction du field_of_view
-        // Plus le FOV est petit, plus la vue est zoomée
-        // Formule : plus le FOV est petit, plus on recule la caméra
-        const defaultFOV = 45;
-        const actualFOV = todo.viewpoint?.field_of_view || defaultFOV;
-        // Calcul d'un facteur de zoom inversement proportionnel au FOV
-        // On ajoute un facteur de base pour éviter un zoom excessif
-        const zoomFactor = (defaultFOV / actualFOV) * 20;
+  
+    console.log("Création du fichier BCF avec", todos.length, "todos");
+  
+    // Limiter à maximum 10 todos pour éviter les problèmes de taille
+    const todosToExport = todos.slice(0, 10);
+  
+    // Fonction pour s'assurer que les vecteurs direction et up sont perpendiculaires
+    function ensureVectorsPerpendicular(camera) {
+      // Normaliser le vecteur direction
+      const dirLength = Math.sqrt(
+        camera.direction.x * camera.direction.x +
+        camera.direction.y * camera.direction.y +
+        camera.direction.z * camera.direction.z
+      );
+      
+      if (dirLength > 0) {
+        camera.direction.x /= dirLength;
+        camera.direction.y /= dirLength;
+        camera.direction.z /= dirLength;
+      }
+      
+      // Normaliser le vecteur up initial
+      const upLength = Math.sqrt(
+        camera.up.x * camera.up.x +
+        camera.up.y * camera.up.y +
+        camera.up.z * camera.up.z
+      );
+      
+      if (upLength > 0) {
+        camera.up.x /= upLength;
+        camera.up.y /= upLength;
+        camera.up.z /= upLength;
+      }
+      
+      // Calculer le produit scalaire entre direction et up
+      const dotProduct = 
+        camera.direction.x * camera.up.x +
+        camera.direction.y * camera.up.y +
+        camera.direction.z * camera.up.z;
+      
+      // Si les vecteurs ne sont pas perpendiculaires
+      if (Math.abs(dotProduct) > 0.0001) {
+        // Utiliser un produit vectoriel pour créer un vecteur perpendiculaire
+        // Calculer le produit vectoriel entre direction et (0,1,0)
+        const auxVector = { x: 0, y: 1, z: 0 };
         
-        // Transform coordinates - adapté pour les nouvelles propriétés
-        const transformCoord = (p) => ({
-          x: p.x,       // X inchangé
-          y: -p.z,      // Y prend -Z (inversion de la hauteur)
-          z: p.y        // Z prend Y (verticale)
-        });
-        
-        // Reculer la caméra en fonction du facteur de zoom
-        const viewPoint = {
-          x: todo.viewpoint.camera_view_point.x - todo.viewpoint.camera_direction.x * zoomFactor,
-          y: todo.viewpoint.camera_view_point.y - todo.viewpoint.camera_direction.y * zoomFactor,
-          z: todo.viewpoint.camera_view_point.z - todo.viewpoint.camera_direction.z * zoomFactor
-        };
-        
-        const transformedViewPoint = transformCoord(viewPoint);
-        
-        // Le point cible reste le point de vue d'origine
-        const transformedTarget = transformCoord(todo.viewpoint.camera_view_point);
-        const upVector = transformCoord(todo.viewpoint.camera_up_vector);
-        
-        camera = {
-          position: transformedViewPoint,
-          target: transformedTarget,
-          up: upVector
-        };
-        
-        // Calculate forward direction
-        const forward = {
-          x: camera.target.x - camera.position.x,
-          y: camera.target.y - camera.position.y,
-          z: camera.target.z - camera.position.z
-        };
-        
-        // Normalize forward
-        const forwardLength = Math.sqrt(forward.x ** 2 + forward.y ** 2 + forward.z ** 2);
-        if (forwardLength > 0) {
-          forward.x /= forwardLength;
-          forward.y /= forwardLength;
-          forward.z /= forwardLength;
+        // Si direction est trop proche de auxVector, utiliser un autre vecteur auxiliaire
+        if (Math.abs(camera.direction.y) > 0.9) {
+          auxVector.x = 1;
+          auxVector.y = 0;
         }
         
-        // Assigner le forward normalisé comme direction
-        camera.direction = forward;
+        // Calculer le produit vectoriel
+        const crossX = camera.direction.y * auxVector.z - camera.direction.z * auxVector.y;
+        const crossY = camera.direction.z * auxVector.x - camera.direction.x * auxVector.z;
+        const crossZ = camera.direction.x * auxVector.y - camera.direction.y * auxVector.x;
         
-        // Ensure up is orthogonal to forward
-        const dot = forward.x * camera.up.x + forward.y * camera.up.y + forward.z * camera.up.z;
-        const correctedUp = {
-          x: camera.up.x - forward.x * dot,
-          y: camera.up.y - forward.y * dot,
-          z: camera.up.z - forward.z * dot
-        };
+        // Normaliser le résultat
+        const crossLength = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ);
         
-        // Normalize corrected up
-        const upLength = Math.sqrt(correctedUp.x ** 2 + correctedUp.y ** 2 + correctedUp.z ** 2);
-        if (upLength > 0) {
-          camera.up = {
-            x: correctedUp.x / upLength,
-            y: correctedUp.y / upLength,
-            z: correctedUp.z / upLength
-          };
+        if (crossLength > 0) {
+          camera.up.x = crossX / crossLength;
+          camera.up.y = crossY / crossLength;
+          camera.up.z = crossZ / crossLength;
+        } else {
+          // Fallback si le produit vectoriel est nul
+          camera.up = { x: 0, y: 1, z: 0 };
+          if (Math.abs(camera.direction.y) > 0.9) {
+            camera.up = { x: 1, y: 0, z: 0 };
+          }
         }
       }
-    } else {
-      console.log("Viewpoint manquant, utilisation de valeurs par défaut");
-      // Valeurs par défaut basées sur les échelles observées
-      camera = {
-        position: { x: -37000, y: 36000, z: 24000 },
-        direction: { x: -0.5, y: -0.5, z: -0.5 },
+      
+      return camera;
+    }
+  // Fonction pour obtenir le nom d'utilisateur depuis son ID
+function getUserNameById(userId) {
+  if (!userId) return "";
+  
+  // Chercher le membre dans projectMembers qui a cet ID
+  const member = projectMembers.find(member => 
+    (member.id === userId || member._id === userId)
+  );
+  
+  // Retourner le nom du membre s'il existe, sinon retourner l'ID
+  if (member) {
+    return member.name || member.email || userId;
+  }
+  
+  // Si aucun membre ne correspond, retourner l'ID tel quel
+  return userId;
+}
+    // Fonction pour mapper les priorités du schéma Mongoose aux valeurs BCF
+    function mapPriority(priority) {
+      switch (priority) {
+        case "low": return "Low";
+        case "normal": return "Normal";
+        case "high": return "High";
+        case "critical": return "Critical";
+        default: return "Medium";
+      }
+    }
+  
+    // Fonction pour générer un UUID au format standard
+    function generateUUID() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16).toUpperCase();
+      });
+    }
+  
+    // Pour chaque todo, créer un dossier avec un GUID standard
+    todosToExport.forEach((todo, index) => {
+      // Utiliser un GUID fixe pour le premier todo (pour le débogage)
+      const topicGuid = index === 0
+        ? "63E78882-7C6A-4BF7-8982-FC478AFB9C97"
+        : generateUUID();
+  
+      console.log(`Création du dossier pour todo '${todo.title}' avec GUID ${topicGuid}`);
+      const topicFolder = zip.folder(topicGuid);
+      
+      // Vérifier que le viewpoint est bien chargé
+      if (!todo.viewpoint) {
+        console.log(`Todo '${todo.title}' n'a pas de viewpoint associé, utilisation de valeurs par défaut.`);
+      }
+      
+      const viewpointGuid = todo.viewpoint?.guid || generateUUID();
+  
+      // Nettoyer les textes pour éviter les problèmes XML
+      const safeTitle = (todo.title || "Todo").replace(/[<>&'"]/g, "");
+      const safeDesc = (todo.description || "Description").replace(/[<>&'"]/g, "");
+      const safeAuthor = (todo.createdBy || "User").replace(/[<>&'"]/g, "");
+  
+      // Fichier markup.bcf - contient les métadonnées du todo
+      // Format strictement conforme à BCF 2.1
+      topicFolder.file(
+        "markup.bcf",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <Markup>
+    <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="${todo.status || 'Open'}">
+      <Title>${safeTitle}</Title>
+      <Description>${safeDesc}</Description>
+      <CreationDate>${new Date(todo.createdAt).toISOString()}</CreationDate>
+      <CreationAuthor>${safeAuthor}</CreationAuthor>
+   <AssignedTo>${getUserNameById(todo.assignedTo) || ""}</AssignedTo>
+      <ModifiedDate>${new Date(todo.updatedAt || todo.createdAt).toISOString()}</ModifiedDate>
+      <ModifiedAuthor>${safeAuthor}</ModifiedAuthor>
+
+      <Priority>${mapPriority(todo.priority)}</Priority>
+ 
+    </Topic>
+    <Viewpoints>
+      <Viewpoint Guid="${viewpointGuid}">
+        <ViewpointReference>viewpoint.bcfv</ViewpointReference>
+        <Snapshot>snapshot.png</Snapshot>
+      </Viewpoint>
+    </Viewpoints>
+  </Markup>`
+      );
+  
+      // Extraire et transformer les données de caméra du viewpoint pour Revit/BIMTrack
+      let camera = {
+        position: { x: 0, y: 0, z: 0 },
+        direction: { x: 0, y: 0, z: -1 },
         up: { x: 0, y: 1, z: 0 }
       };
-      camera = ensureVectorsPerpendicular(camera);
-    }
-
-    // Fichier viewpoint.bcfv - contient les informations de caméra
-    // Format strictement conforme à BCF 2.1 pour Revit
-    topicFolder.file(
-      "viewpoint.bcfv",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<VisualizationInfo Guid="${viewpointGuid}">
-  <PerspectiveCamera>
-    <CameraViewPoint>
-      <X>${camera.position.x.toFixed(6)}</X>
-      <Y>${camera.position.y.toFixed(6)}</Y>
-      <Z>${camera.position.z.toFixed(6)}</Z>
-    </CameraViewPoint>
-    <CameraDirection>
-      <X>${camera.direction.x.toFixed(6)}</X>
-      <Y>${camera.direction.y.toFixed(6)}</Y>
-      <Z>${camera.direction.z.toFixed(6)}</Z>
-    </CameraDirection>
-    <CameraUpVector>
-      <X>${camera.up.x.toFixed(6)}</X>
-      <Y>${camera.up.y.toFixed(6)}</Y>
-      <Z>${camera.up.z.toFixed(6)}</Z>
-    </CameraUpVector>
-    <FieldOfView>${todo.viewpoint?.field_of_view || 45.0}</FieldOfView>
-  </PerspectiveCamera>
-  <Components>
-    <ViewSetupHints SpacesVisible="false" SpaceBoundariesVisible="false" OpeningsVisible="false"/>
-  </Components>
-</VisualizationInfo>`
-    );
-
-    // Ajouter la capture d'écran
-    if (todo.screenshot) {
-      try {
-        // Extraire la partie base64 de l'URL data
-        let base64Data = todo.screenshot;
-        if (base64Data.includes("data:image/png;base64,")) {
-          base64Data = base64Data.split("data:image/png;base64,")[1];
+  
+      if (todo.viewpoint) {
+        // Nouvelle structure avec camera_view_point, camera_direction et camera_up_vector
+        if (todo.viewpoint.camera_view_point && todo.viewpoint.camera_direction && todo.viewpoint.camera_up_vector) {
+          // Détermine le facteur de zoom en fonction du field_of_view
+          // Plus le FOV est petit, plus la vue est zoomée
+          // Formule : plus le FOV est petit, plus on recule la caméra
+          const defaultFOV = 45;
+          const actualFOV = todo.viewpoint?.field_of_view || defaultFOV;
+          // Calcul d'un facteur de zoom inversement proportionnel au FOV
+          // On ajoute un facteur de base pour éviter un zoom excessif
+          const zoomFactor = (defaultFOV / actualFOV) * 20;
+          
+          // Transform coordinates - adapté pour les nouvelles propriétés
+          const transformCoord = (p) => ({
+            x: p.x,       // X inchangé
+            y: -p.z,      // Y prend -Z (inversion de la hauteur)
+            z: p.y        // Z prend Y (verticale)
+          });
+          
+          // Reculer la caméra en fonction du facteur de zoom
+          const viewPoint = {
+            x: todo.viewpoint.camera_view_point.x - todo.viewpoint.camera_direction.x * zoomFactor,
+            y: todo.viewpoint.camera_view_point.y - todo.viewpoint.camera_direction.y * zoomFactor,
+            z: todo.viewpoint.camera_view_point.z - todo.viewpoint.camera_direction.z * zoomFactor
+          };
+          
+          const transformedViewPoint = transformCoord(viewPoint);
+          
+          // Le point cible reste le point de vue d'origine
+          const transformedTarget = transformCoord(todo.viewpoint.camera_view_point);
+          const upVector = transformCoord(todo.viewpoint.camera_up_vector);
+          
+          camera = {
+            position: transformedViewPoint,
+            target: transformedTarget,
+            up: upVector
+          };
+          
+          // Calculate forward direction
+          const forward = {
+            x: camera.target.x - camera.position.x,
+            y: camera.target.y - camera.position.y,
+            z: camera.target.z - camera.position.z
+          };
+          
+          // Normalize forward
+          const forwardLength = Math.sqrt(forward.x ** 2 + forward.y ** 2 + forward.z ** 2);
+          if (forwardLength > 0) {
+            forward.x /= forwardLength;
+            forward.y /= forwardLength;
+            forward.z /= forwardLength;
+          }
+          
+          // Assigner le forward normalisé comme direction
+          camera.direction = forward;
+          
+          // Ensure up is orthogonal to forward
+          const dot = forward.x * camera.up.x + forward.y * camera.up.y + forward.z * camera.up.z;
+          const correctedUp = {
+            x: camera.up.x - forward.x * dot,
+            y: camera.up.y - forward.y * dot,
+            z: camera.up.z - forward.z * dot
+          };
+          
+          // Normalize corrected up
+          const upLength = Math.sqrt(correctedUp.x ** 2 + correctedUp.y ** 2 + correctedUp.z ** 2);
+          if (upLength > 0) {
+            camera.up = {
+              x: correctedUp.x / upLength,
+              y: correctedUp.y / upLength,
+              z: correctedUp.z / upLength
+            };
+          }
         }
-
-        if (base64Data && base64Data.trim() !== "") {
-          topicFolder.file("snapshot.png", base64Data, { base64: true });
-          console.log("Capture d'écran ajoutée pour:", todo.title);
-        } else {
-          throw new Error("Données d'image invalides");
-        }
-      } catch (error) {
-        console.error("Erreur lors du traitement de l'image:", error);
-        // Image de secours en cas d'erreur (pixel transparent 1x1)
-        const fallbackPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-        topicFolder.file("snapshot.png", fallbackPng, { base64: true });
+      } else {
+        console.log("Viewpoint manquant, utilisation de valeurs par défaut");
+        // Valeurs par défaut basées sur les échelles observées
+        camera = {
+          position: { x: -37000, y: 36000, z: 24000 },
+          direction: { x: -0.5, y: -0.5, z: -0.5 },
+          up: { x: 0, y: 1, z: 0 }
+        };
+        camera = ensureVectorsPerpendicular(camera);
       }
-    } else {
-      // Image par défaut si pas de capture
-      const defaultPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-      topicFolder.file("snapshot.png", defaultPng, { base64: true });
-    }
-
-    // Ajouter un fichier project.bcfp pour la compatibilité Revit
-    topicFolder.file(
-      "project.bcfp",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<ProjectExtension>
-  <Project ProjectId="${generateUUID()}">
-    <Name>BIM Project</Name>
-  </Project>
-</ProjectExtension>`
-    );
-  });
-
-  // Générer et télécharger le fichier
-  zip.generateAsync({ type: "blob" })
-    .then((content) => {
-      console.log("Fichier BCF généré avec succès");
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "revit_issues.bcf";
-      a.click();
-      URL.revokeObjectURL(url);
-    })
-    .catch((error) => {
-      console.error("Erreur lors de la génération du fichier BCF:", error);
+  
+      // Fichier viewpoint.bcfv - contient les informations de caméra
+      // Format strictement conforme à BCF 2.1 pour Revit
+      topicFolder.file(
+        "viewpoint.bcfv",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <VisualizationInfo Guid="${viewpointGuid}">
+    <PerspectiveCamera>
+      <CameraViewPoint>
+        <X>${camera.position.x.toFixed(6)}</X>
+        <Y>${camera.position.y.toFixed(6)}</Y>
+        <Z>${camera.position.z.toFixed(6)}</Z>
+      </CameraViewPoint>
+      <CameraDirection>
+        <X>${camera.direction.x.toFixed(6)}</X>
+        <Y>${camera.direction.y.toFixed(6)}</Y>
+        <Z>${camera.direction.z.toFixed(6)}</Z>
+      </CameraDirection>
+      <CameraUpVector>
+        <X>${camera.up.x.toFixed(6)}</X>
+        <Y>${camera.up.y.toFixed(6)}</Y>
+        <Z>${camera.up.z.toFixed(6)}</Z>
+      </CameraUpVector>
+      <FieldOfView>${todo.viewpoint?.field_of_view || 45.0}</FieldOfView>
+    </PerspectiveCamera>
+    <Components>
+      <ViewSetupHints SpacesVisible="false" SpaceBoundariesVisible="false" OpeningsVisible="false"/>
+    </Components>
+  </VisualizationInfo>`
+      );
+  
+      // Ajouter la capture d'écran
+      if (todo.screenshot) {
+        try {
+          // Extraire la partie base64 de l'URL data
+          let base64Data = todo.screenshot;
+          if (base64Data.includes("data:image/png;base64,")) {
+            base64Data = base64Data.split("data:image/png;base64,")[1];
+          }
+  
+          if (base64Data && base64Data.trim() !== "") {
+            topicFolder.file("snapshot.png", base64Data, { base64: true });
+            console.log("Capture d'écran ajoutée pour:", todo.title);
+          } else {
+            throw new Error("Données d'image invalides");
+          }
+        } catch (error) {
+          console.error("Erreur lors du traitement de l'image:", error);
+          // Image de secours en cas d'erreur (pixel transparent 1x1)
+          const fallbackPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+          topicFolder.file("snapshot.png", fallbackPng, { base64: true });
+        }
+      } else {
+        // Image par défaut si pas de capture
+        const defaultPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        topicFolder.file("snapshot.png", defaultPng, { base64: true });
+      }
+  
+      // Ajouter un fichier project.bcfp pour la compatibilité Revit
+      topicFolder.file(
+        "project.bcfp",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  <ProjectExtension>
+    <Project ProjectId="${generateUUID()}">
+      <Name>BIM Project</Name>
+    </Project>
+  </ProjectExtension>`
+      );
     });
-};
+  
+    // Générer et télécharger le fichier
+    zip.generateAsync({ type: "blob" })
+      .then((content) => {
+        console.log("Fichier BCF généré avec succès");
+        const url = URL.createObjectURL(content);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "revit_issues.bcf";
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch((error) => {
+        console.error("Erreur lors de la génération du fichier BCF:", error);
+      });
+  };
   // Fonction pour basculer l'affichage du panneau de todos
   const toggleTodosTool = () => {
     if (activeTool === 'todos') {
