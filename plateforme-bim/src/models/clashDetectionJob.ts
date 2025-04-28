@@ -1,70 +1,64 @@
-// clashDetectionJob.ts
-import mongoose, { Document, Model, Schema } from "mongoose";
+import mongoose, { Schema } from 'mongoose';
 
-export interface IClashDetectionJob extends Document {
-  project: mongoose.Types.ObjectId;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  startedAt: Date;
-  completedAt?: Date;
-  files: mongoose.Types.ObjectId[];
-  parameters: {
-    tolerance: number;
-    types?: number[];
-    limitResults?: number;
-    automaticGrouping?: boolean;
-  };
-  clashesFound: number;
-  errorMessage?: string;
-  results?: mongoose.Types.ObjectId[];
-  createdBy: mongoose.Types.ObjectId;
-}
-
-const ClashDetectionJobSchema: Schema<IClashDetectionJob> = new mongoose.Schema({
+const clashDetectionJobSchema = new Schema({
   project: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: 'Project',
     required: true
+  },
+  files: [{
+    type: Schema.Types.ObjectId,
+    ref: 'File'
+  }],
+  parameters: {
+    tolerance: {
+      type: Number,
+      default: 0.05
+    },
+    types: [Number],
+    limitResults: {
+      type: Number,
+      default: 100
+    },
+    automaticGrouping: {
+      type: Boolean,
+      default: true
+    }
   },
   status: {
     type: String,
     enum: ['pending', 'processing', 'completed', 'failed'],
     default: 'pending'
   },
-  startedAt: {
-    type: Date,
-    default: Date.now
-  },
-  completedAt: Date,
-  files: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'File'
-  }],
-  parameters: {
-    tolerance: {
-      type: Number,
-      default: 0
-    },
-    types: [Number],
-    limitResults: Number,
-    automaticGrouping: Boolean
-  },
-  clashesFound: {
+  progress: {
     type: Number,
     default: 0
   },
-  errorMessage: String,
-  results: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Clash'
-  }],
+  totalElementsAnalyzed: {
+    type: Number,
+    default: 0
+  },
+  results: {
+    totalClashes: {
+      type: Number,
+      default: 0
+    },
+    resolvedClashes: {
+      type: Number,
+      default: 0
+    }
+  },
+  startedAt: Date,
+  completedAt: Date,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
   createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: Schema.Types.ObjectId,
+    ref: 'User'
   }
 });
 
-const ClashDetectionJob: Model<IClashDetectionJob> = 
-  mongoose.models.ClashDetectionJob || mongoose.model<IClashDetectionJob>("ClashDetectionJob", ClashDetectionJobSchema);
-
-export default ClashDetectionJob;
+export default mongoose.models.ClashDetectionJob || 
+  mongoose.model('ClashDetectionJob', clashDetectionJobSchema);

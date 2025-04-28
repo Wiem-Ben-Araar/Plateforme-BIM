@@ -34,6 +34,7 @@ import SectionTool from "@/components/SectionTool";
 import { MeasurementTool } from "@/components/MeasurementTool";
 import { AnnotationSystem } from "@/components/AnnotationSystem";
 import { getTodosCount, isActiveTool, openTodoCreation, TodoManager, toggleTodoPanel } from "@/components/TodoManager";
+import { ClashDetectionPanel, clashDetectionService, ClashTypeSelector, clearClashResults, focusOnClash, visualizeClash } from "@/components/ClashDetection";
 
 
 
@@ -91,15 +92,16 @@ export default function ViewerPage() {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
 
   const [currentPoints, setCurrentPoints] = useState<THREE.Vector3[]>([]);
- 
+  const [clashResults, setClashResults] = useState([]);
+  const [isClashDetectionRunning, setIsClashDetectionRunning] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState(null);
+  const [jobPollingInterval, setJobPollingInterval] = useState(null);
 
   const [currentPlane, setCurrentPlane] = useState<PlaneData | null>(null);
   const [isIsolationActive, setIsIsolationActive] = useState(false);
 
 
 
-  const [clashResults, setClashResults] = useState([]);
-  const [isClashDetectionRunning, setIsClashDetectionRunning] = useState(false);
   const [camera, setCamera] = useState<THREE.Camera | null>(null);
   const [controls, setControls] = useState<any>(null);
   const initializedRef = useRef(false);
@@ -112,49 +114,8 @@ export default function ViewerPage() {
 
   const router = useRouter();
 
-// Types IFC courants pour la détection de clash
-const IFC_TYPES = {
-  IFCWALLSTANDARDCASE: 4,
-  IFCWALL: 5,
-  IFCSLAB: 6, 
-  IFCBEAM: 7,
-  IFCCOLUMN: 8,
-  IFCWINDOW: 15,
-  IFCDOOR: 16,
-  IFCPLATE: 20,
-  IFCMEMBER: 23,
-  IFCCOVERING: 29,
-  IFCFURNISHINGELEMENT: 38,
-};
-const logAvailableTypesInModel = async (modelID) => {
-  if (!viewerRef.current) return;
-  
-  try {
-    const ifcManager = viewerRef.current.IFC.loader.ifcManager;
-    console.log("Analyse des types disponibles dans le modèle", modelID);
-    
-    // Essayer de récupérer tous les types possibles
-    const allTypeIds = [];
-    // Tester un intervalle plus large de types IFC (1-100)
-    for (let typeId = 1; typeId <= 100; typeId++) {
-      try {
-        const ids = await ifcManager.getAllItemsOfType(modelID, typeId, false);
-        if (ids && ids.length > 0) {
-          allTypeIds.push({ typeId, count: ids.length });
-          console.log(`Type ${typeId}: ${ids.length} éléments trouvés`);
-        }
-      } catch (e) {
-        // Ignorer les types non disponibles
-      }
-    }
-    
-    console.log("Types disponibles dans le modèle:", allTypeIds);
-    return allTypeIds;
-  } catch (error) {
-    console.error("Erreur lors de l'analyse des types:", error);
-    return [];
-  }
-};
+
+
   // États locaux pour suivre les informations du TodoManager
   const [todosCount, setTodosCount] = useState(0)
   const [isToolActive, setIsToolActive] = useState(false)
@@ -186,534 +147,7 @@ const logAvailableTypesInModel = async (modelID) => {
       setActiveTool(tool);
     }
   };    
-// Fonction principale de détection de clash entre types spécifiques avec tolérance
-const detectClashesBetweenTypes = async (typeId1, typeId2, tolerance = 0) => {
-  if (!viewerRef.current || isClashDetectionRunning) return;
-  
-  setIsClashDetectionRunning(true);
-  setClashResults([]);
-  
-  try {
-    console.log(`Début de la détection de clash entre les types ${typeId1} et ${typeId2} avec tolérance ${tolerance}m`);
-    console.log("Modèles chargés:", loadedModels);
-    
-    const viewer = viewerRef.current;
-    const ifcManager = viewer.IFC.loader.ifcManager;
-    
-    const clashes = [];
-    
-    // Récupérer les modèles visibles
-    const visibleModels = loadedModels.filter(model => model.visible);
-    
-    if (visibleModels.length === 0) {
-      console.error("Aucun modèle visible trouvé");
-      setIsClashDetectionRunning(false);
-      return;
-    }
-    
-    // Récupérer tous les éléments pour les deux types spécifiés
-    let elements1 = [];
-    let elements2 = [];
-    
-    for (const model of visibleModels) {
-      const modelID = model.id;
-      console.log(`Traitement du modèle ${modelID} pour les types ${typeId1} et ${typeId2}`);
-      
-      try {
-        // Récupérer les éléments du premier type
-        const ids1 = await ifcManager.getAllItemsOfType(modelID, typeId1, false);
-        console.log(`Modèle ${modelID}, Type ${typeId1}: ${ids1.length} éléments trouvés`);
-        
-        elements1 = [
-          ...elements1,
-          ...ids1.map(id => ({ modelID, id, type: typeId1 }))
-        ];
-        
-        // Récupérer les éléments du deuxième type
-        const ids2 = await ifcManager.getAllItemsOfType(modelID, typeId2, false);
-        console.log(`Modèle ${modelID}, Type ${typeId2}: ${ids2.length} éléments trouvés`);
-        
-        elements2 = [
-          ...elements2,
-          ...ids2.map(id => ({ modelID, id, type: typeId2 }))
-        ];
-      } catch (e) {
-        console.error(`Erreur lors de la récupération des éléments des types ${typeId1} ou ${typeId2}:`, e);
-      }
-    }
-    
-    console.log(`Total: ${elements1.length} éléments de type ${typeId1}, ${elements2.length} éléments de type ${typeId2}`);
-    
-    // Vérifier s'il y a suffisamment d'éléments pour la détection
-    if (elements1.length === 0 || elements2.length === 0) {
-      console.log("Pas assez d'éléments pour la détection de clash");
-      setIsClashDetectionRunning(false);
-      return;
-    }
-    
-    // Limiter à 100 éléments de chaque côté pour des raisons de performance
-    if (elements1.length > 100) {
-      console.log(`Limitation à 100 éléments de type ${typeId1} pour des raisons de performance`);
-      elements1 = elements1.slice(0, 100);
-    }
-    
-    if (elements2.length > 100) {
-      console.log(`Limitation à 100 éléments de type ${typeId2} pour des raisons de performance`);
-      elements2 = elements2.slice(0, 100);
-    }
-    
-    // Comparer chaque élément du premier type avec chaque élément du deuxième type
-    console.log("Début de la comparaison des éléments...");
-    let comparisonCount = 0;
-    
-    // Convertir la tolérance en nombre
-    const toleranceValue = parseFloat(tolerance);
-    
-    for (const elem1 of elements1) {
-      const box1 = await getElementBoundingBox(elem1.modelID, elem1.id);
-      if (!box1) continue;
-      
-      // Si une tolérance est définie, élargir la bounding box du premier élément
-      if (toleranceValue > 0) {
-        // Créer une copie pour ne pas modifier l'original
-        const extendedBox1 = box1.clone();
-        // Étendre la bounding box dans toutes les directions selon la tolérance
-        extendedBox1.min.subScalar(toleranceValue);
-        extendedBox1.max.addScalar(toleranceValue);
-        
-        for (const elem2 of elements2) {
-          comparisonCount++;
-          if (comparisonCount % 100 === 0) {
-            console.log(`${comparisonCount} comparaisons effectuées...`);
-          }
-          
-          // Éviter de comparer un élément avec lui-même
-          if (elem1.id === elem2.id && elem1.modelID === elem2.modelID) continue;
-          
-          const box2 = await getElementBoundingBox(elem2.modelID, elem2.id);
-          if (!box2) continue;
-          
-          // Vérifier l'intersection avec la bounding box étendue
-          if (extendedBox1.intersectsBox(box2)) {
-            console.log(`Clash détecté entre l'élément ${elem1.id} (${elem1.type}) et l'élément ${elem2.id} (${elem2.type}) avec tolérance ${toleranceValue}m`);
-            
-            try {
-              // Récupérer des informations sur les éléments pour l'affichage
-              const props1 = await viewer.IFC.getProperties(elem1.modelID, elem1.id, true);
-              const props2 = await viewer.IFC.getProperties(elem2.modelID, elem2.id, true);
-              
-              // Calculer la distance minimale entre les deux bounding boxes
-              const distance = calculateMinimumDistance(box1, box2);
-              
-              // Stocker les informations sur le clash
-              clashes.push({
-                id: `clash-${clashes.length}`,
-                element1: {
-                  id: elem1.id,
-                  modelID: elem1.modelID,
-                  type: elem1.type,
-                  name: props1?.Name?.value || `Element-${elem1.id}`,
-                },
-                element2: {
-                  id: elem2.id,
-                  modelID: elem2.modelID,
-                  type: elem2.type,
-                  name: props2?.Name?.value || `Element-${elem2.id}`,
-                },
-                boundingBox1: box1,
-                boundingBox2: box2,
-                distance: distance,
-                extendedBox: extendedBox1,
-              });
-            } catch (error) {
-              console.error(`Erreur lors de la récupération des propriétés:`, error);
-            }
-          }
-        }
-      } else {
-        // Détection sans tolérance (comme avant)
-        for (const elem2 of elements2) {
-          comparisonCount++;
-          if (comparisonCount % 100 === 0) {
-            console.log(`${comparisonCount} comparaisons effectuées...`);
-          }
-          
-          // Éviter de comparer un élément avec lui-même
-          if (elem1.id === elem2.id && elem1.modelID === elem2.modelID) continue;
-          
-          const box2 = await getElementBoundingBox(elem2.modelID, elem2.id);
-          if (!box2) continue;
-          
-          // Vérifier l'intersection
-          if (box1.intersectsBox(box2)) {
-            console.log(`Clash détecté entre l'élément ${elem1.id} (${elem1.type}) et l'élément ${elem2.id} (${elem2.type})`);
-            
-            try {
-              // Récupérer des informations sur les éléments pour l'affichage
-              const props1 = await viewer.IFC.getProperties(elem1.modelID, elem1.id, true);
-              const props2 = await viewer.IFC.getProperties(elem2.modelID, elem2.id, true);
-              
-              // Stocker les informations sur le clash
-              clashes.push({
-                id: `clash-${clashes.length}`,
-                element1: {
-                  id: elem1.id,
-                  modelID: elem1.modelID,
-                  type: elem1.type,
-                  name: props1?.Name?.value || `Element-${elem1.id}`,
-                },
-                element2: {
-                  id: elem2.id,
-                  modelID: elem2.modelID,
-                  type: elem2.type,
-                  name: props2?.Name?.value || `Element-${elem2.id}`,
-                },
-                boundingBox1: box1,
-                boundingBox2: box2,
-                distance: 0, // Distance nulle pour un clash direct
-              });
-            } catch (error) {
-              console.error(`Erreur lors de la récupération des propriétés:`, error);
-            }
-          }
-        }
-      }
-    }
-    
-    console.log(`Total des clashs détectés: ${clashes.length}`);
-    
-    // Mettre à jour les résultats
-    setClashResults(clashes);
-    
-    // Visualiser les clashs
-    if (clashes.length > 0) {
-      visualizeClashes(clashes);
-    } else {
-      console.log("Aucun clash détecté");
-    }
-    
-  } catch (error) {
-    console.error("Erreur lors de la détection de clash:", error);
-  } finally {
-    setIsClashDetectionRunning(false);
-  }
-};
 
-// Fonction pour calculer la distance minimale entre deux bounding boxes
-const calculateMinimumDistance = (box1, box2) => {
-  // Calcul de la distance minimale entre deux bounding boxes
-  const dx = Math.max(
-    box1.min.x - box2.max.x,
-    box2.min.x - box1.max.x,
-    0
-  );
-  const dy = Math.max(
-    box1.min.y - box2.max.y,
-    box2.min.y - box1.max.y,
-    0
-  );
-  const dz = Math.max(
-    box1.min.z - box2.max.z,
-    box2.min.z - box1.max.z,
-    0
-  );
-  
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-};
-const focusOnClash = (clash) => {
-  if (!viewerRef.current || !clash) return;
-  
-  const viewer = viewerRef.current;
-  
-  // Centre du clash (où les bounding boxes se chevauchent)
-  const intersectionBox = clash.boundingBox1.clone().intersect(clash.boundingBox2);
-  const center = new THREE.Vector3();
-  intersectionBox.getCenter(center);
-  
-  // Calculer la taille de la boîte pour déterminer la distance de la caméra
-  const size = new THREE.Vector3();
-  intersectionBox.getSize(size);
-  const maxDim = Math.max(size.x, size.y, size.z);
-  
-  // Positionner la caméra pour voir le clash
-  const camera = viewer.context.getCamera();
-  const cameraPosition = center.clone().add(new THREE.Vector3(maxDim * 2, maxDim * 2, maxDim * 2));
-  
-  // Animer le déplacement de la caméra
-  const cameraControls = viewer.context.ifcCamera.cameraControls;
-  cameraControls.setLookAt(
-    cameraPosition.x, cameraPosition.y, cameraPosition.z,
-    center.x, center.y, center.z,
-    true // Activer l'animation
-  );
-  
-  // Optionnel: Mettre en évidence les éléments en clash
-  highlightClashElements(clash);
-};
-
-// Fonction pour visualiser les clashs avec information de tolérance
-const visualizeClashes = (clashes) => {
-  if (!viewerRef.current) return;
-  
-  // Nettoyer les visualisations précédentes
-  clearClashResults();
-  
-  const viewer = viewerRef.current;
-  const scene = viewer.context.getScene();
-  
-  // Créer un groupe pour stocker toutes les visualisations de clash
-  const clashGroup = new THREE.Group();
-  clashGroup.name = "clashVisualizationGroup";
-  
-  // Pour chaque clash, créer une visualisation
-  clashes.forEach(clash => {
-    // Déterminer le centre du clash
-    let center;
-    if (clash.distance === 0) {
-      // Pour les clashs directs, utiliser le centre de l'intersection
-      const intersectionBox = clash.boundingBox1.clone().intersect(clash.boundingBox2);
-      center = new THREE.Vector3();
-      intersectionBox.getCenter(center);
-    } else {
-      // Pour les clashs avec tolérance, calculer un point entre les deux boxes
-      center = calculatePointBetweenBoxes(clash.boundingBox1, clash.boundingBox2);
-    }
-    
-    // Créer une sphère pour représenter le clash
-    const geometry = new THREE.SphereGeometry(0.2, 16, 16);
-    // Couleur différente selon le type de clash (direct ou avec tolérance)
-    const color = clash.distance === 0 ? 0xFF0000 : 0xFFA500;
-    const material = new THREE.MeshBasicMaterial({ color, opacity: 0.7, transparent: true });
-    const sphere = new THREE.Mesh(geometry, material);
-    sphere.position.copy(center);
-    sphere.userData = { 
-      isClashVisualization: true,
-      clashData: clash
-    };
-    
-    clashGroup.add(sphere);
-    
-    // Bounding box pour les éléments en clash
-    const box1Helper = new THREE.Box3Helper(clash.boundingBox1, new THREE.Color(0x00FF00));
-    const box2Helper = new THREE.Box3Helper(clash.boundingBox2, new THREE.Color(0x0000FF));
-    box1Helper.userData = { isClashVisualization: true };
-    box2Helper.userData = { isClashVisualization: true };
-    
-    clashGroup.add(box1Helper);
-    clashGroup.add(box2Helper);
-    
-    // Ajouter la visualisation de la tolérance si applicable
-    if (clash.extendedBox) {
-      const toleranceHelper = new THREE.Box3Helper(clash.extendedBox, new THREE.Color(0xFFA500));
-      toleranceHelper.userData = { isClashVisualization: true };
-      toleranceHelper.material.opacity = 0.3;
-      toleranceHelper.material.transparent = true;
-      clashGroup.add(toleranceHelper);
-    }
-  });
-  
-  // Ajouter le groupe à la scène
-  scene.add(clashGroup);
-  
-  // Forcer le rendu pour afficher les changements
-  viewer.context.getRenderer().render(scene, viewer.context.getCamera());
-};
-
-// Fonction pour calculer un point entre deux bounding boxes
-const calculatePointBetweenBoxes = (box1, box2) => {
-  // Calculer les centres des deux boîtes
-  const center1 = new THREE.Vector3();
-  const center2 = new THREE.Vector3();
-  
-  box1.getCenter(center1);
-  box2.getCenter(center2);
-  
-  // Retourner un point au milieu
-  return new THREE.Vector3(
-    (center1.x + center2.x) / 2,
-    (center1.y + center2.y) / 2,
-    (center1.z + center2.z) / 2
-  );
-};
-
-// Interface utilisateur pour sélectionner les types à comparer avec tolérance
-const ClashTypeSelector = ({ onStartClashDetection }) => {
-  const [type1, setType1] = useState(IFC_TYPES.IFCWALL);
-  const [type2, setType2] = useState(IFC_TYPES.IFCWINDOW);
-  const [tolerance, setTolerance] = useState("0.0");
-  const [availableTypes, setAvailableTypes] = useState([]);
-  
-  // Analyser les types disponibles dans les modèles chargés
-  const analyzeAvailableTypes = async () => {
-    const availableTypesData = [];
-    
-    // Récupérer les modèles visibles
-    const visibleModels = loadedModels.filter(model => model.visible);
-    
-    for (const model of visibleModels) {
-      const modelTypes = await logAvailableTypesInModel(model.id);
-      if (modelTypes && modelTypes.length > 0) {
-        availableTypesData.push(...modelTypes);
-      }
-    }
-    
-    // Convertir les types numériques en noms lisibles et ne garder que les uniques
-    const typeMap = new Map();
-    for (const typeData of availableTypesData) {
-      // Trouver le nom du type à partir de l'ID
-      const typeName = Object.keys(IFC_TYPES).find(
-        key => IFC_TYPES[key] === typeData.typeId
-      ) || `Type ${typeData.typeId}`;
-      
-      typeMap.set(typeData.typeId, {
-        id: typeData.typeId,
-        name: typeName,
-        count: typeData.count
-      });
-    }
-    
-    setAvailableTypes(Array.from(typeMap.values()));
-  };
-  
-  // Fonction pour gérer le changement de tolérance
-  const handleToleranceChange = (e) => {
-    // Limiter à 2 décimales et valeurs positives
-    const value = e.target.value;
-    if (value === "" || value === "0" || value === "0.") {
-      setTolerance(value);
-    } else {
-      const numValue = parseFloat(value);
-      if (!isNaN(numValue) && numValue >= 0) {
-        setTolerance(value);
-      }
-    }
-  };
-  
-  // Charger les types disponibles au montage du composant
-  useEffect(() => {
-    analyzeAvailableTypes();
-  }, [loadedModels]);
-  const handleMeasurementComplete = (measurement: Measurement) => {
-    setMeasurements(prev => [...prev, measurement]);
-  };
-
-
-
-  return (
-    <div className="p-4 bg-white">
-      <h3 className="text-lg font-semibold mb-3">Détection de clash</h3>
-      
-      <div className="mb-4">
-        <div className="grid grid-cols-2 gap-4 mb-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Type 1:</label>
-            <select 
-              className="w-full p-2 border rounded"
-              value={type1}
-              onChange={(e) => setType1(parseInt(e.target.value))}
-            >
-              {availableTypes.map(type => (
-                <option key={`type1-${type.id}`} value={type.id}>
-                  {type.name} ({type.count})
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1">Type 2:</label>
-            <select 
-              className="w-full p-2 border rounded"
-              value={type2}
-              onChange={(e) => setType2(parseInt(e.target.value))}
-            >
-              {availableTypes.map(type => (
-                <option key={`type2-${type.id}`} value={type.id}>
-                  {type.name} ({type.count})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        
-        <div className="mb-3">
-          <label className="block text-sm font-medium mb-1">
-            Tolérance (m):
-            <span className="text-xs text-gray-500 ml-1">
-              (0 = collision directe uniquement)
-            </span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="w-full p-2 border rounded"
-            value={tolerance}
-            onChange={handleToleranceChange}
-            placeholder="Ex: 0.05 pour 5cm"
-          />
-        </div>
-      </div>
-      
-      <div className="flex justify-between">
-        <button 
-          className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-          onClick={() => analyzeAvailableTypes()}
-        >
-          Rafraîchir les types
-        </button>
-        
-        <button 
-          className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600"
-          onClick={() => onStartClashDetection(type1, type2, tolerance)}
-          disabled={isClashDetectionRunning}
-        >
-          {isClashDetectionRunning ? "Détection en cours..." : "Détecter les clashs"}
-        </button>
-      </div>
-    </div>
-  );
-};
-const getElementTypeName = (typeId) => {
-  return Object.keys(IFC_TYPES).find(key => IFC_TYPES[key] === typeId) || `Type ${typeId}`;
-};
-
-
-
-// Affichage des résultats de clash avec distance
-const ClashDetectionPanel = ({ clashes, onClashSelect }) => {
-  if (clashes.length === 0) {
-    return <div className="p-4">Aucun clash détecté</div>;
-  }
-  
-  return (
-    <div className="p-4 max-h-96 overflow-y-auto">
-      <h3 className="text-lg font-semibold mb-2">Clashs détectés: {clashes.length}</h3>
-      <div className="space-y-2">
-        {clashes.map((clash) => (
-          <div 
-            key={clash.id}
-            className={`p-2 ${clash.distance === 0 ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200'} border rounded cursor-pointer hover:bg-gray-100`}
-            onClick={() => onClashSelect(clash)}
-          >
-            <p className="font-medium">Clash #{clash.id.split('-')[1]}</p>
-            <p className="text-sm">
-              {clash.element1.name} ({getElementTypeName(clash.element1.type)})
-            </p>
-            <p className="text-sm">
-              {clash.element2.name} ({getElementTypeName(clash.element2.type)})
-            </p>
-            {clash.distance > 0 && (
-              <p className="text-xs text-orange-700 mt-1">
-                Distance: {clash.distance.toFixed(3)}m
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 
   useEffect(() => {
@@ -825,7 +259,41 @@ const ClashDetectionPanel = ({ clashes, onClashSelect }) => {
           COORDINATE_TO_ORIGIN: true,
           USE_FAST_BOOLS: false
         });
-    
+        containerRef.current.onclick = async () => {
+          try {
+            // Si l'outil de masquage est actif, on ignore le clic de sélection
+            if (activeTool === 'hide') return;
+            
+            const result = await viewer.IFC.selector.pickIfcItem(false);
+            console.log("Résultat de la sélection:", result);
+            
+            if (!result) {
+              viewer.IFC.selector.unpickIfcItems();
+              setSelectedElement(null);
+              setSelectedModelID(null);
+              setIsSidebarOpen(false);
+            } else {
+              // Vérifier directement la visibilité du modèle via l'API Three.js
+              const modelID = result.modelID;
+              const ifcManager = viewer.IFC.loader.ifcManager;
+              const model = ifcManager.state.models[modelID];
+              
+              // Vérifier si le mesh du modèle existe et est visible
+              if (model && model.mesh && model.mesh.visible) {
+                setSelectedElement(result.id);
+                setSelectedModelID(modelID);
+                setIsSidebarOpen(true);
+              } else {
+                // Le modèle est invisible, annuler la sélection
+                viewer.IFC.selector.unpickIfcItems();
+                console.log("Sélection ignorée: le modèle est masqué");
+              }
+            }
+          } catch (error) {
+            console.error("Erreur lors de la sélection:", error);
+          }
+        };
+          ///////////details property
         // Chargement des modèles avec optimisation
        // 5. Chargement des modèles IFC avec gestion d'erreur
        const filesParam = searchParams.get("files");
@@ -1495,6 +963,71 @@ const handleClearMeasurements = () => {
   };
   
 
+  useEffect(() => {
+    return () => {
+      if (jobPollingInterval) {
+        clearInterval(jobPollingInterval);
+      }
+    };
+  }, [jobPollingInterval]);
+
+  // Fonction pour démarrer un nouveau job de détection de clash
+  const handleStartClashDetection = async (files: string[], params: ClashDetectionJobParams) => {
+    try {
+      const job = await clashDetectionService.createJob(projectId, files, params);
+      
+      // Polling optimisé
+      const checkJobStatus = async () => {
+        const updatedJob = await clashDetectionService.getJobStatus(job._id);
+        
+        if (updatedJob.status === 'completed') {
+          const results = await clashDetectionService.getClashResults(job._id);
+          setClashResults(results);
+          visualizeClashResults(results);
+        } else if (updatedJob.status !== 'failed') {
+          setTimeout(checkJobStatus, 2000);
+        }
+      };
+      
+      checkJobStatus();
+    } catch (error) {
+      toast.error("Échec de la détection : " + error.message);
+    }
+  };
+  
+  const visualizeClashResults = (results: Clash[]) => {
+    if (!viewerRef.current) return;
+    
+    results.forEach(clash => {
+      const color = clash.status === 'resolved' ? 0x00ff00 : 0xff0000;
+      viewerRef.current!.IFC.selector.pickIfcItemsByID(
+        [clash.elementData.element1.modelID, clash.elementData.element2.modelID],
+        [parseInt(clash.elementData.element1.id), parseInt(clash.elementData.element2.id)],
+        true,
+        new THREE.Color(color)
+      );
+    });
+  };
+  const projectId = searchParams.get("projectId");
+  if (!projectId) {
+    setError("Project ID manquant");
+    return;
+  }
+  // Fonction pour charger les clashes existants d'un projet
+  const loadExistingClashes = async () => {
+    try {
+      const clashes = await clashDetectionService.getProjectClashes(projectId);
+      setClashResults(clashes);
+    } catch (error) {
+      console.error("Erreur lors du chargement des clashes:", error);
+    }
+  };
+
+  // Fonction pour gérer la sélection d'un clash
+  const handleFocusOnClash = (clash, shouldZoom = false) => {
+    visualizeClash(viewer3DModel, clash);
+    focusOnClash(viewer3DModel, clash, shouldZoom);
+  };
 
 
 
@@ -1621,24 +1154,26 @@ const handleClearMeasurements = () => {
   <Download className="h-4 w-4" />
 
 </Button>
-        <Button
-  variant={activeTool === 'clashDetection' ? "default" : "ghost"}
-  size="icon"
-  onClick={() => {
-    if (activeTool === 'clashDetection') {
-      // Désactiver l'outil si déjà actif
-      setActiveTool(null);
-      // Nettoyer les visualisations de clash
-      clearClashResults();
-    } else {
-      // Activer l'outil
-      setActiveTool('clashDetection');
-    }
-  }}
-  title="Détection de clash"
->
-  <AlertTriangle className="h-5 w-5" />
-</Button>
+<Button
+          variant={activeTool === 'clashDetection' ? "default" : "ghost"}
+          size="icon"
+          onClick={() => {
+            if (activeTool === 'clashDetection') {
+              // Désactiver l'outil si déjà actif
+              setActiveTool(null);
+              // Nettoyer les visualisations de clash
+              clearClashResults(viewer3DModel);
+            } else {
+              // Activer l'outil
+              setActiveTool('clashDetection');
+              // Charger les clashes existants
+              loadExistingClashes();
+            }
+          }}
+          title="Détection de clash"
+        >
+          <AlertTriangle className="h-5 w-5" />
+        </Button>
         {isIsolationActive && (
           <Button
             variant="destructive"
@@ -1705,45 +1240,38 @@ const handleClearMeasurements = () => {
         />
       )}
    
-{activeTool === 'clashDetection' && (
-  <div className="absolute top-0 right-0 w-80 bg-white shadow-lg">
-    <div className="flex justify-between items-center p-2 bg-gray-100">
-      <h3 className="font-medium">Détection de clash</h3>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => {
-          setActiveTool(null);
-          clearClashResults();
-        }}
-      >
-        <X className="h-4 w-4" />
-      </Button>
-    </div>
-    
-    {/* Panneau de sélection des types et tolérance */}
-    <ClashTypeSelector
-      onStartClashDetection={(type1, type2, tolerance) => 
-        detectClashesBetweenTypes(type1, type2, tolerance)
-      }
-    />
-    
-    {/* Affichage des résultats */}
-    {isClashDetectionRunning ? (
-      <div className="p-4 flex justify-center items-center">
-        <span className="animate-spin mr-2">
-          <Loader2 className="h-5 w-5" />
-        </span>
-        Détection en cours...
-      </div>
-    ) : (
-      <ClashDetectionPanel
-        clashes={clashResults}
-        onClashSelect={focusOnClash}
-      />
-    )}
-  </div>
-)}
+   {activeTool === 'clashDetection' && (
+        <div className="absolute top-0 right-0 w-80 bg-white shadow-lg">
+          <div className="flex justify-between items-center p-2 bg-gray-100">
+            <h3 className="font-medium">Détection de clash</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setActiveTool(null);
+                clearClashResults(viewer3DModel);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          {/* Panneau de sélection des types et tolérance */}
+          <ClashTypeSelector
+  onStartClashDetection={(files, params) => 
+    handleStartClashDetection(files, params)
+  }
+  projectId={projectId}
+/>
+          
+          {/* Affichage des résultats */}
+          <ClashDetectionPanel
+            clashes={clashResults}
+            onClashSelect={handleFocusOnClash}
+            isLoading={isClashDetectionRunning}
+          />
+        </div>
+      )}
        {/* Panneau Mesure */}
        {activeTool === 'measure' && (
   <div className="absolute bottom-20 left-4 bg-white p-4 rounded-lg shadow-lg">

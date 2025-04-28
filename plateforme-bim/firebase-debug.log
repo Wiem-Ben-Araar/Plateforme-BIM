@@ -1,27 +1,30 @@
-[debug] [2025-04-24T15:38:16.800Z] ----------------------------------------------------------------------
-[debug] [2025-04-24T15:38:16.804Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\wiemb\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import=./emulator-data
-[debug] [2025-04-24T15:38:16.804Z] CLI Version:   13.29.1
-[debug] [2025-04-24T15:38:16.804Z] Platform:      win32
-[debug] [2025-04-24T15:38:16.804Z] Node Version:  v20.15.0
-[debug] [2025-04-24T15:38:16.805Z] Time:          Thu Apr 24 2025 16:38:16 GMT+0100 (heure normale d’Europe centrale)
-[debug] [2025-04-24T15:38:16.805Z] ----------------------------------------------------------------------
+[debug] [2025-04-28T08:57:34.301Z] ----------------------------------------------------------------------
+[debug] [2025-04-28T08:57:34.306Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\wiemb\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --import=./emulator-data
+[debug] [2025-04-28T08:57:34.306Z] CLI Version:   13.29.1
+[debug] [2025-04-28T08:57:34.307Z] Platform:      win32
+[debug] [2025-04-28T08:57:34.307Z] Node Version:  v20.15.0
+[debug] [2025-04-28T08:57:34.307Z] Time:          Mon Apr 28 2025 09:57:34 GMT+0100 (heure normale d’Europe centrale)
+[debug] [2025-04-28T08:57:34.307Z] ----------------------------------------------------------------------
 [debug] 
-[debug] [2025-04-24T15:38:16.932Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
-[debug] [2025-04-24T15:38:16.932Z] > authorizing via signed-in user (wiembenaraar2@gmail.com)
-[debug] [2025-04-24T15:38:17.067Z] java version "17.0.10" 2024-01-16 LTS
+[debug] [2025-04-28T08:57:34.312Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-04-28T08:57:34.486Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-04-28T08:57:34.487Z] > authorizing via signed-in user (wiembenaraar2@gmail.com)
+[debug] [2025-04-28T08:57:34.730Z] java version "17.0.10" 2024-01-16 LTS
 
-[debug] [2025-04-24T15:38:17.068Z] Java(TM) SE Runtime Environment (build 17.0.10+11-LTS-240)
+[debug] [2025-04-28T08:57:34.731Z] Java(TM) SE Runtime Environment (build 17.0.10+11-LTS-240)
 Java HotSpot(TM) 64-Bit Server VM (build 17.0.10+11-LTS-240, mixed mode, sharing)
 
-[debug] [2025-04-24T15:38:17.098Z] Parsed Java major version: 17
+[debug] [2025-04-28T08:57:34.755Z] Parsed Java major version: 17
 [info] i  emulators: Starting emulators: storage {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: storage"}}
-[debug] [2025-04-24T15:38:17.108Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-04-24T15:38:17.108Z] [storage] Storage Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
-[debug] [2025-04-24T15:38:17.109Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}]},"metadata":{"message":"assigned listening specs for emulators"}}
-[debug] [2025-04-24T15:38:17.113Z] [hub] writing locator at C:\Users\wiemb\AppData\Local\Temp\hub-plateforme-bim-c779e.json
-[debug] [2025-04-24T15:38:17.129Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"storage"},"message":"Ignoring unsupported arg: port"}}
-[debug] [2025-04-24T15:38:18.098Z] Temp file directory for storage emulator: C:\Users\wiemb\AppData\Local\Temp/firebase/storage/blobs {"metadata":{"emulator":{"name":"storage"},"message":"Temp file directory for storage emulator: C:\\Users\\wiemb\\AppData\\Local\\Temp/firebase/storage/blobs"}}
-[debug] [2025-04-24T15:38:18.181Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
+[debug] [2025-04-28T08:57:34.771Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-04-28T08:57:34.772Z] [storage] Storage Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-04-28T08:57:34.772Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4000},{"address":"::1","family":"IPv6","port":4000}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2025-04-28T08:57:34.777Z] [hub] writing locator at C:\Users\wiemb\AppData\Local\Temp\hub-plateforme-bim-c779e.json
+[debug] [2025-04-28T08:57:34.794Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"storage"},"message":"Ignoring unsupported arg: port"}}
+[debug] [2025-04-28T08:57:34.833Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-04-28T08:57:34.833Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2025-04-28T08:57:36.482Z] Temp file directory for storage emulator: C:\Users\wiemb\AppData\Local\Temp/firebase/storage/blobs {"metadata":{"emulator":{"name":"storage"},"message":"Temp file directory for storage emulator: C:\\Users\\wiemb\\AppData\\Local\\Temp/firebase/storage/blobs"}}
+[debug] [2025-04-28T08:57:36.600Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
 [info] 
 ┌─────────────────────────────────────────────────────────────┐
 │ ✔  All emulators ready! It is now safe to connect your app. │
