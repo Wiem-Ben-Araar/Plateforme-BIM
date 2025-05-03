@@ -1,9 +1,8 @@
 "use client"
-import { Button } from "@/components/ui/button"
-import { Building, Plus, FolderOpen, Users } from "lucide-react"
-import Link from "next/link"
+import { Building, FolderOpen, Users } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
+import Hero3D from "@/components/hero-3d"
 
 // Variable globale pour stocker les références au visualiseur
 if (typeof window !== "undefined") {
@@ -37,59 +36,44 @@ export default function Home() {
 
   // Ne rendre le contenu que lorsque le composant est monté côté client
   if (!isMounted) {
-    return null // ou un indicateur de chargement
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-8">
-      {/* Hero section */}
-      <section className="py-12 text-center space-y-4">
-        <Building className="h-16 w-16 mx-auto text-primary" />
-        <h1 className="text-4xl font-bold tracking-tight">Plateforme BIM</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Visualisez, collaborez et gérez vos modèles BIM en toute simplicité
-        </p>
-        <div className="flex justify-center gap-4 pt-4">
-          {status === "authenticated" ? (
-            <>
-              <Button asChild size="lg">
-                <Link href="/create-project">
-                  <Plus className="mr-2 h-5 w-5" />
-                  Créer un projet
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/projects">
-                  <FolderOpen className="mr-2 h-5 w-5" />
-                  Afficher les projets
-                </Link>
-              </Button>
-            </>
-          ) : (
-            <Button asChild size="lg">
-              <Link href="/api/auth/signin">Se connecter</Link>
-            </Button>
-          )}
-        </div>
-      </section>
+    <div className="space-y-8 py-8">
+      {/* Hero section avec animation 3D */}
+      <Hero3D />
 
       {/* Fonctionnalités ou autres sections de la page d'accueil */}
       <section className="py-8">
         <div className="container">
-          <h2 className="text-2xl font-bold mb-6 text-center">Fonctionnalités principales</h2>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="bg-card p-6 rounded-lg border">
+          <h2 className="text-2xl font-bold mb-6 text-center text-gray-900 dark:text-white">
+            Fonctionnalités principales
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="bg-card p-6 rounded-lg border shadow-sm hover:shadow-md transition-shadow duration-300">
               <Building className="h-10 w-10 text-primary mb-4" />
-              <h3 className="text-xl font-medium mb-2">Visualisation 3D</h3>
+              <h3 className="text-xl font-medium mb-2 text-gray-900 dark:text-white">Visualisation 3D</h3>
               <p className="text-muted-foreground">
                 Explorez vos modèles BIM en 3D avec des outils de navigation intuitifs.
               </p>
             </div>
-            <div className="bg-card p-6 rounded-lg border">
+            <div className="bg-card p-6 rounded-lg border shadow-sm hover:shadow-md transition-shadow duration-300">
               <Users className="h-10 w-10 text-primary mb-4" />
-              <h3 className="text-xl font-medium mb-2">Collaboration</h3>
+              <h3 className="text-xl font-medium mb-2 text-gray-900 dark:text-white">Collaboration</h3>
               <p className="text-muted-foreground">
                 Travaillez en équipe sur vos projets avec des outils de partage et d'annotation.
+              </p>
+            </div>
+            <div className="bg-card p-6 rounded-lg border shadow-sm hover:shadow-md transition-shadow duration-300">
+              <FolderOpen className="h-10 w-10 text-primary mb-4" />
+              <h3 className="text-xl font-medium mb-2 text-gray-900 dark:text-white">Gestion de projets</h3>
+              <p className="text-muted-foreground">
+                Organisez et suivez l'avancement de vos projets BIM de manière efficace.
               </p>
             </div>
           </div>
@@ -98,4 +82,3 @@ export default function Home() {
     </div>
   )
 }
-

@@ -1,7 +1,7 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useSession, signOut } from "next-auth/react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,76 +9,36 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, LogOut, Settings, UserCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+} from "@/components/ui/dropdown-menu"
+import { Settings } from "lucide-react"
+import Link from "next/link"
 
 export default function UserButton() {
-  const router = useRouter();
-  const { data: session, status } = useSession();
-  const isSignedIn = status === "authenticated";
-  
-  // Simuler un utilisateur connecté si pas de session réelle
-  const user = session?.user || {
-    name: "John Doe",
-    email: "john.doe@example.com",
-    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-  };
+  const { data: session } = useSession()
 
-  const handleSignOut = async () => {
-    await signOut({ redirect: false });
-    router.push("/sign-in");
-  };
-
-  const handleSignIn = () => {
-    router.push("/sign-in");
-  };
-
-  if (!isSignedIn) {
-    return (
-      <Button variant="outline" size="sm" className="gap-2" onClick={handleSignIn}>
-        <User className="h-4 w-4" />
-        <span>Connexion</span>
-      </Button>
-    );
+  if (!session) {
+    return null
   }
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user.image} alt={user.name} />
-            <AvatarFallback>{user.name?.charAt(0) || "U"}</AvatarFallback>
-          </Avatar>
-        </Button>
+      <DropdownMenuTrigger>
+        <Avatar>
+          <AvatarImage src={session?.user?.image || ""} alt={session?.user?.name || "Avatar"} />
+          <AvatarFallback>{session?.user?.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+        </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{user.name}</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
-            </p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/profile")}>
-          <UserCircle className="mr-2 h-4 w-4" />
-          <span>Profil</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push("/settings")}>
-          <Settings className="mr-2 h-4 w-4" />
-          <span>Paramètres</span>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Mon compte</DropdownMenuLabel>
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <Settings className="mr-2 h-4 w-4" />
+            Paramètres
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Déconnexion</span>
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => signOut()}>Se déconnecter</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  )
 }
