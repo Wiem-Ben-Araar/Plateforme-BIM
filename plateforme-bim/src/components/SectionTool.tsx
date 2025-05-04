@@ -58,9 +58,12 @@
     }
   
     return () => {
-      viewer.clipper.createPlane = originalCreatePlane
+      if(viewer.clipper){
+        viewer.clipper.createPlane = originalCreatePlane
       viewer.clipper.pickPlane = originalPickPlane
       viewer.clipper.deleteAllPlanes = originalDeleteAllPlanes
+      }
+    
     }
   }, [viewer])
   
@@ -104,7 +107,9 @@
      } else {
        // Nettoyer quand l'outil est désactivé
        isCreatingRef.current = true
+       if(viewer.clipper) {
        viewer.clipper.deleteAllPlanes()
+       }
        isCreatingRef.current = false
        isPlaneCreatedRef.current = false
      }

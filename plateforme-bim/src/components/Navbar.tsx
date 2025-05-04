@@ -1,90 +1,106 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useState, useEffect } from "react"
-import { usePathname } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Building, Menu, X } from "lucide-react"
+import Link from "next/link";
+import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import UserButton from "@/components/user-button";
+import { Button } from "@/components/ui/button";
+import { Home, Upload, Cuboid as Cube, Menu, X, ChevronDown, Settings, FileText, Users, Building, LayoutDashboard } from "lucide-react";
 
 export default function Navbar() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [scrolled, setScrolled] = useState(false)
-  const pathname = usePathname()
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 10)
-    }
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+      setScrolled(window.scrollY > 10);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const isActive = (path: string) => {
-    return pathname === path
-  }
+    return pathname === path;
+  };
 
   const navLinks = [
-    { name: "Accueil", href: "/" },
-    { name: "Fonctionnalités", href: "#features" },
-    { name: "Solutions", href: "#solutions" },
-    { name: "Tarifs", href: "#pricing" },
-    { name: "Contact", href: "#contact" },
-  ]
+    { name: "Accueil", href: "/", icon: <Home className="h-4 w-4 mr-2" /> },
+    
+  ];
 
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? "bg-primary-dark/90 backdrop-blur-md shadow-lg" : "bg-transparent"
+    <header 
+      className={`sticky top-0 z-50 w-full transition-all duration-200 ${
+        scrolled ? "bg-white/95 backdrop-blur-sm shadow-md" : "bg-white shadow"
       }`}
     >
       <div className="container mx-auto px-4">
-        <div className="flex h-20 items-center justify-between">
+        <div className="flex h-16 items-center justify-between">
           {/* Logo et nom */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center space-x-2 group">
-              <div className="transition-transform duration-300 hover:rotate-[360deg]">
-                <Building className="h-8 w-8 text-accent" />
-              </div>
-              <span className="font-bold text-xl hidden sm:inline-block text-white group-hover:text-accent transition-all duration-300">
-                BIM Platform
-              </span>
+            <Link href="/" className="flex items-center space-x-2">
+              <Building className="h-8 w-8 text-primary" />
+              <span className="font-bold text-xl hidden sm:inline-block">BIM Platform</span>
             </Link>
           </div>
 
           {/* Navigation - Desktop */}
-          <nav className="hidden md:flex items-center space-x-6">
+          <nav className="hidden md:flex items-center space-x-1">
             {navLinks.map((link) => (
-              <Link
-                key={link.href}
+              <Link 
+                key={link.href} 
                 href={link.href}
-                className={`text-sm font-medium transition-colors ${
-                  isActive(link.href) ? "text-accent" : "text-white/80 hover:text-white"
+                className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive(link.href)
+                    ? "bg-primary/10 text-primary"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
+                {link.icon}
                 {link.name}
               </Link>
             ))}
+
+            <div className="relative group px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer">
+              <div className="flex items-center">
+                <LayoutDashboard className="h-4 w-4 mr-2" />
+                <span>Projets</span>
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </div>
+              <div className="absolute left-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                <div className="py-1">
+                  <Link href="/projects" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <FileText className="h-4 w-4 inline mr-2" />
+                    Tous les projets
+                  </Link>
+                     
+                  <Link href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <Users className="h-4 w-4 inline mr-2" />
+                    Collaborateurs
+                  </Link>
+                  <Link href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <Settings className="h-4 w-4 inline mr-2" />
+                    Paramètres
+                  </Link>
+                </div>
+              </div>
+            </div>
           </nav>
 
           {/* Boutons d'action */}
-          <div className="flex items-center space-x-4">
-            <Button asChild variant="ghost" className="text-white hover:text-accent hover:bg-transparent">
-              <Link href="/api/auth/signin">Se connecter</Link>
-            </Button>
-
-            <Button asChild className="bg-accent hover:bg-accent/90 text-white hidden md:flex">
-              <Link href="/api/auth/signin">S'inscrire</Link>
-            </Button>
-
+          <div className="flex items-center space-x-2">
+            <UserButton />
+            
             {/* Menu mobile */}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden text-accent hover:bg-transparent"
+              className="md:hidden"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-label="Menu principal"
             >
-              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           </div>
         </div>
@@ -92,26 +108,58 @@ export default function Navbar() {
 
       {/* Menu mobile */}
       {isMenuOpen && (
-        <div className="md:hidden bg-primary-dark border-t border-accent/10">
-          <div className="container mx-auto px-4 py-4 space-y-4">
+        <div className="md:hidden bg-white border-t">
+          <div className="container mx-auto px-4 py-3 space-y-1">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`block py-2 text-lg ${
-                  isActive(link.href) ? "text-accent" : "text-white/80 hover:text-white"
+                className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive(link.href)
+                    ? "bg-primary/10 text-primary"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
                 onClick={() => setIsMenuOpen(false)}
               >
+                {link.icon}
                 {link.name}
               </Link>
             ))}
-            <Button asChild className="bg-accent hover:bg-accent/90 text-white w-full mt-4">
-              <Link href="/api/auth/signin">S'inscrire</Link>
-            </Button>
+            <div className="px-3 py-2 text-sm font-medium text-gray-700">
+              <div className="flex items-center">
+                <LayoutDashboard className="h-4 w-4 mr-2" />
+                <span>Projets</span>
+              </div>
+            </div>
+            <div className="pl-8 space-y-1">
+              <Link 
+                href="#" 
+                className="flex items-center px-3 py-2 rounded-md text-sm text-gray-700 hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Tous les projets
+              </Link>
+              <Link 
+                href="#" 
+                className="flex items-center px-3 py-2 rounded-md text-sm text-gray-700 hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Collaborateurs
+              </Link>
+              <Link 
+                href="#" 
+                className="flex items-center px-3 py-2 rounded-md text-sm text-gray-700 hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Paramètres
+              </Link>
+            </div>
           </div>
         </div>
       )}
     </header>
-  )
+  );
 }

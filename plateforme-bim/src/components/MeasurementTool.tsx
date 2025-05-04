@@ -295,24 +295,7 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
     }
   }, [containerRef]);
 
-  const clearAllMeasurements = useCallback(() => {
-    if (viewer) {
-      const scene = viewer.context.getScene();
-      measurements.forEach(m => {
-        if (m.line) scene.remove(m.line);
-        m.labels.forEach(label => scene.remove(label));
-      });
-      setMeasurements([]);
-      setCurrentPoints([]);
-      if (previewLineRef.current) {
-        scene.remove(previewLineRef.current);
-        previewLineRef.current = null;
-      }
-      if (onClearMeasurements) {
-        onClearMeasurements();
-      }
-    }
-  }, [viewer, measurements, onClearMeasurements]);
+
 
   useEffect(() => {
     if (!containerRef.current || !viewer) return;
@@ -410,8 +393,8 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
   useEffect(() => {
     return () => {
       enableSelection();
-      if (viewer) {
-        const scene = viewer.context.getScene();
+      const scene = viewer?.context?.getScene?.();
+      if (scene) {
         measurements.forEach(m => {
           if (m.line) scene.remove(m.line);
           m.labels.forEach(label => scene.remove(label));
@@ -419,6 +402,7 @@ export const MeasurementTool: React.FC<MeasurementToolProps> = ({
       }
     };
   }, [viewer, measurements, enableSelection]);
+  
 
   return null;
 };

@@ -2,51 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body, :root{
+  height:100%;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 201 100% 42%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 201 100% 42%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
-
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 201 100% 42%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 201 100% 42%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
+  
 }
 
 @layer base {
@@ -55,258 +73,5 @@
   }
   body {
     @apply bg-background text-foreground;
-  }
-}
-
-/* Custom BIM color palette */
-.bg-primary-dark {
-  background-color: #0a2342; /* Deep blue */
-}
-
-.bg-primary-light {
-  background-color: #112d4e; /* Slightly lighter blue */
-}
-
-.bg-secondary {
-  background-color: #2364aa; /* Medium blue */
-}
-
-.text-accent,
-.bg-accent {
-  color: #3da5d9; /* Turquoise blue */
-}
-
-.bg-accent {
-  background-color: #3da5d9;
-}
-
-.border-accent {
-  border-color: #3da5d9;
-}
-
-.hover\:bg-accent\/90:hover {
-  background-color: rgba(61, 165, 217, 0.9);
-}
-
-.hover\:bg-accent\/10:hover {
-  background-color: rgba(61, 165, 217, 0.1);
-}
-
-/* 3D Building Model Styles */
-.building-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  perspective: 1000px;
-  transform-style: preserve-3d;
-}
-
-.building {
-  position: absolute;
-  width: 300px;
-  height: 400px;
-  top: 50%;
-  left: 50%;
-  transform-style: preserve-3d;
-  transform: translate(-50%, -50%) rotateX(10deg) rotateY(45deg);
-  animation: building-float 8s ease-in-out infinite alternate, building-rotate 20s linear infinite;
-}
-
-.building-base {
-  position: absolute;
-  width: 250px;
-  height: 20px;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(61, 165, 217, 0.7);
-  border-radius: 4px;
-  box-shadow: 0 0 30px rgba(61, 165, 217, 0.3);
-}
-
-.building-main {
-  position: absolute;
-  width: 200px;
-  height: 300px;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(17, 45, 78, 0.8);
-  border: 1px solid rgba(61, 165, 217, 0.3);
-  backdrop-filter: blur(5px);
-  box-shadow: 0 0 30px rgba(10, 35, 66, 0.5);
-}
-
-.building-roof {
-  position: absolute;
-  width: 220px;
-  height: 30px;
-  bottom: 320px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(61, 165, 217, 0.7);
-  border-radius: 4px;
-  box-shadow: 0 0 30px rgba(61, 165, 217, 0.3);
-}
-
-.windows-grid {
-  position: absolute;
-  display: grid;
-  gap: 8px;
-  padding: 15px;
-}
-
-.windows-front {
-  width: 170px;
-  height: 270px;
-  bottom: 15px;
-  left: 15px;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-}
-
-.windows-side {
-  width: 50px;
-  height: 270px;
-  bottom: 15px;
-  right: -50px;
-  transform: rotateY(90deg);
-  transform-origin: left;
-  grid-template-columns: repeat(1, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-}
-
-.window {
-  background: rgba(61, 165, 217, 0.3);
-  border-radius: 2px;
-  animation: window-glow 3s ease-in-out infinite alternate;
-  animation-delay: calc(var(--window-delay, 0) * 0.5s);
-}
-
-.window:nth-child(odd) {
-  --window-delay: 1;
-}
-
-.window:nth-child(even) {
-  --window-delay: 2;
-}
-
-.window:nth-child(3n) {
-  --window-delay: 3;
-}
-
-.floating-elements {
-  position: absolute;
-  width: 400px;
-  height: 400px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  transform-style: preserve-3d;
-}
-
-.floating-element {
-  position: absolute;
-  background: rgba(61, 165, 217, 0.2);
-  border: 1px solid rgba(61, 165, 217, 0.3);
-  border-radius: 4px;
-  backdrop-filter: blur(5px);
-  box-shadow: 0 0 20px rgba(61, 165, 217, 0.2);
-  animation: element-float 5s ease-in-out infinite alternate;
-  transform-style: preserve-3d;
-  transform: translateZ(calc(var(--z-index, 0) * 50px));
-}
-
-.floating-element:nth-child(odd) {
-  --z-index: 1;
-}
-
-.floating-element:nth-child(even) {
-  --z-index: -1;
-}
-
-.blueprint-lines {
-  position: absolute;
-  width: 400px;
-  height: 400px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) translateZ(-150px);
-  background: linear-gradient(90deg, rgba(61, 165, 217, 0.1) 1px, transparent 1px),
-    linear-gradient(rgba(61, 165, 217, 0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
-  border-radius: 50%;
-  opacity: 0.5;
-  animation: blueprint-rotate 15s linear infinite;
-}
-
-.glow-effect {
-  position: absolute;
-  width: 300px;
-  height: 100px;
-  bottom: -20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(61, 165, 217, 0.4) 0%, transparent 70%);
-  filter: blur(20px);
-  border-radius: 50%;
-  animation: glow 4s ease-in-out infinite alternate;
-}
-
-@keyframes building-float {
-  0% {
-    transform: translate(-50%, -50%) rotateX(10deg) rotateY(45deg) translateY(0);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateX(10deg) rotateY(45deg) translateY(-20px);
-  }
-}
-
-@keyframes building-rotate {
-  0% {
-    transform: translate(-50%, -50%) rotateX(10deg) rotateY(45deg) translateY(0);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotateX(10deg) rotateY(405deg) translateY(0);
-  }
-}
-
-@keyframes window-glow {
-  0% {
-    background: rgba(61, 165, 217, 0.2);
-    box-shadow: 0 0 5px rgba(61, 165, 217, 0.2);
-  }
-  100% {
-    background: rgba(61, 165, 217, 0.5);
-    box-shadow: 0 0 10px rgba(61, 165, 217, 0.5);
-  }
-}
-
-@keyframes element-float {
-  0% {
-    transform: translateZ(calc(var(--z-index, 0) * 50px)) translateY(0) rotate(0deg);
-  }
-  100% {
-    transform: translateZ(calc(var(--z-index, 0) * 50px)) translateY(-30px) rotate(10deg);
-  }
-}
-
-@keyframes blueprint-rotate {
-  0% {
-    transform: translate(-50%, -50%) translateZ(-150px) rotate(0deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) translateZ(-150px) rotate(360deg);
-  }
-}
-
-@keyframes glow {
-  0% {
-    opacity: 0.5;
-    width: 280px;
-  }
-  100% {
-    opacity: 0.8;
-    width: 320px;
   }
 }
