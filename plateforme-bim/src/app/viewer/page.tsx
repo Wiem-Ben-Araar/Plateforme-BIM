@@ -261,38 +261,34 @@ export default function ViewerPage() {
         }
         ///////////details property
         const filesParam = searchParams.get("files");
-        const namesParam = searchParams.get("names"); // Récupère le paramètre names
-        
-        if (filesParam && namesParam) { // Vérifie que les deux paramètres existent
-          const fileURLs = JSON.parse(filesParam);
-          const fileNames = JSON.parse(namesParam); // Parse les noms
-          
-          const newModels = [];
-        
-          for (let i = 0; i < fileURLs.length; i++) { // Parcourt avec l'index
-            const url = fileURLs[i];
-            const fileName = fileNames[i]; // Récupère le nom correspondant
-        
-            try {
-              const model = await viewer.IFC.loadIfcUrl(url, {
-                applyMaterials: true,
-                coerceMaterials: false,
-              });
-        
-              if (model?.mesh && model.modelID !== undefined) {
-                newModels.push({
-                  id: model.modelID,
-                  name: fileName, // Utilise directement le nom du fichier
-                  url: url,
-                  visible: true,
-                });
-              }
-            } catch (error) {
-              console.error(`Échec du chargement: ${url}`, error);
-            }
-          }
-        
-          setLoadedModels(newModels);
+       if (filesParam) {
+         const fileURLs = JSON.parse(filesParam) as string[];
+         const newModels = [];
+ 
+         for (const url of fileURLs) {
+           try {
+             const model = await viewer.IFC.loadIfcUrl(url, {
+               applyMaterials: true,
+               coerceMaterials: false,
+             });
+ 
+             if (model?.mesh && model.modelID !== undefined) {
+               const decodedUrl = decodeURIComponent(url);
+               const match = decodedUrl.match(/(?:uploads\/)?\d+-(.+?)(?:\.ifc)?(?:\?.*)?$/);
+               const cleanName = match ? match[1] : `Modèle-${model.modelID}`;
+ 
+               newModels.push({
+                 id: model.modelID,
+                 name: cleanName,
+                 visible: true,
+               });
+             }
+           } catch (error) {
+             console.error(`Échec du chargement: ${url}`, error);
+           }
+         }
+ 
+         setLoadedModels(newModels);
         
      
            // Ajustement automatique de la caméra only if models were loaded

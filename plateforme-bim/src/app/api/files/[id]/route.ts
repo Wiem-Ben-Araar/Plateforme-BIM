@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getFileStream, getFileBuffer } from "@/lib/gridfs"
+import { getFileBuffer } from "@/lib/gridfs"
 import connectToDatabase from "@/lib/mongodb"
 import File from "@/models/file"
 
@@ -13,88 +13,61 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     await connectToDatabase()
 
-    // First check if this is a direct GridFS ID or a File document ID
-    let gridFSId = id
+    // Check if this is a direct MongoDB ID or a GridFS ID
+    let fileDoc = null
+    let buffer = null
+    let contentType = "application/octet-stream"
+    let filename = "download"
 
-    // If it's a File document ID, get the gridFSId from it
-    if (id.length === 24) {
-      // MongoDB ObjectId length
+    // Try to find the file document
+    try {
+      fileDoc = await File.findById(id)
+    } catch (err) {
+      // If not a valid MongoDB ID, try as GridFS ID
+      fileDoc = await File.findOne({ gridFSId: id })
+    }
+
+    // If we found a file document
+    if (fileDoc) {
+      filename = fileDoc.name
+
+      // Set content type based on file type
+      if (fileDoc.fileType === "IFC") {
+        contentType = "application/ifc"
+      } else if (fileDoc.fileType === "PDF") {
+        contentType = "application/pdf"
+      } else if (fileDoc.mimeType) {
+        contentType = fileDoc.mimeType
+      }
+
+      // Check if file is stored directly in MongoDB or in GridFS
+      if (fileDoc.data) {
+        // File is stored directly in MongoDB
+        buffer = fileDoc.data
+      } else if (fileDoc.gridFSId) {
+        // File is stored in GridFS
+        buffer = await getFileBuffer(fileDoc.gridFSId)
+      } else {
+        return NextResponse.json({ error: "File data not found" }, { status: 404 })
+      }
+    } else {
+      // Try direct GridFS access as fallback
       try {
-        const fileDoc = await File.findById(id)
-        if (fileDoc && fileDoc.gridFSId) {
-          gridFSId = fileDoc.gridFSId
-        }
+        buffer = await getFileBuffer(id)
       } catch (err) {
-        // If error, assume it's a direct GridFS ID
-        console.log("Not a File document ID, treating as GridFS ID")
+        return NextResponse.json({ error: "File not found" }, { status: 404 })
       }
     }
 
     // Check if client wants to download the file
     const isDownload = request.nextUrl.searchParams.get("download") === "true"
 
-    if (isDownload) {
-      // For downloads, we need to get the full buffer
-      const buffer = await getFileBuffer(gridFSId)
-
-      // Get file info from File model if possible
-      let filename = "download"
-      let contentType = "application/octet-stream"
-
-      try {
-        const fileDoc = await File.findOne({ gridFSId })
-        if (fileDoc) {
-          filename = fileDoc.name
-          if (fileDoc.fileType === "IFC") {
-            contentType = "application/ifc"
-          } else if (fileDoc.fileType === "PDF") {
-            contentType = "application/pdf"
-          }
-        }
-      } catch (err) {
-        console.error("Error getting file info:", err)
-      }
-
-      return new NextResponse(buffer, {
-        headers: {
-          "Content-Type": contentType,
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
-        },
-      })
-    } else {
-      // For streaming (e.g., viewing in browser)
-      const stream = await getFileStream(gridFSId)
-
-      // Get file info from File model if possible
-      let contentType = "application/octet-stream"
-
-      try {
-        const fileDoc = await File.findOne({ gridFSId })
-        if (fileDoc) {
-          if (fileDoc.fileType === "IFC") {
-            contentType = "application/ifc"
-          } else if (fileDoc.fileType === "PDF") {
-            contentType = "application/pdf"
-          }
-        }
-      } catch (err) {
-        console.error("Error getting file info:", err)
-      }
-
-      // Convert stream to Response
-      const chunks: Uint8Array[] = []
-      for await (const chunk of stream) {
-        chunks.push(chunk)
-      }
-
-      const buffer = Buffer.concat(chunks)
-
-      return new NextResponse(buffer, {
-        headers: {
-          "Content-Type": contentType,
-        },
-      })
-    }
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type": contentType,
+        ...(isDownload ? { "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"` } : {}),
+      },
+    })
   } catch (error) {
     console.error("Error serving file:", error)
     return NextResponse.json(
